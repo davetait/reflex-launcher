@@ -74,7 +74,7 @@ void handle_arguments(int argc, char *argv[], char **config_file_path)
         }
 
         // Check version, help flags
-#ifdef __unix__
+#ifdef PLATFORM_POSIX
         if (version) {
             print_version(stdout);
             fputs("\n", stdout);
@@ -90,7 +90,7 @@ void handle_arguments(int argc, char *argv[], char **config_file_path)
 
     // Try to find config file if none is specified on the command line
     if (*config_file_path == NULL) {
-#ifdef __unix__
+#ifdef PLATFORM_POSIX
         const char *prefixes[4];
         char home_config_buffer[MAX_PATH_CHARS + 1];
         prefixes[0] = CURRENT_DIRECTORY;

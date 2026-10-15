@@ -36,7 +36,7 @@
 ## About
 Flex Launcher is a customizable application launcher and front end designed with a TV-friendly [10 foot user interface](https://en.wikipedia.org/wiki/10-foot_user_interface), intending to mimic the look and feel of a streaming box or game console. Flex Launcher allows you to launch applications on your HTPC or couch gaming PC entirely by use of a TV remote or a gamepad. No keyboard or mouse required!
 
-Flex Launcher is compatible with both Windows and Linux (including Raspberry Pi devices).
+Flex Launcher is compatible with both Windows and Linux (including Raspberry Pi devices). This fork can also be compiled from source on macOS; see the [compilation guide](docs/compilation.md#macos).
 
 ## Screenshots
 ![Screenshot 1](docs/assets/screenshots/screenshot1.png "Screenshot 1")

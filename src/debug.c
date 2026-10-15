@@ -9,7 +9,7 @@
 #include "util.h"
 #include "debug.h"
 #include "platform/platform.h"
-#ifdef __unix__
+#ifdef PLATFORM_POSIX
 #include "platform/unix.h"
 #endif
 
@@ -23,7 +23,7 @@ static int init_log()
 {
     // Determine log path
     char log_file_path[MAX_PATH_CHARS + 1];
-#ifdef __unix__
+#ifdef PLATFORM_POSIX
     char log_file_directory[MAX_PATH_CHARS + 1];
     join_paths(log_file_directory, sizeof(log_file_directory), 4, getenv("HOME"), ".local", "share", EXECUTABLE_TITLE);
     make_directory(log_file_directory);
@@ -35,7 +35,7 @@ static int init_log()
     // Open log
     log_file = fopen(log_file_path, "wb");
     if (log_file == NULL) {
-#ifdef __unix__
+#ifdef PLATFORM_POSIX
         printf("Failed to create log file");
 #endif
         quit(EXIT_FAILURE);
@@ -44,7 +44,7 @@ print_version(log_file);
 fputs("\n", log_file);
 print_compiler_info(log_file);
 fputs("\n", log_file);
-#ifdef __unix__
+#ifdef PLATFORM_POSIX
     if (config.debug)
         printf("Debug mode enabled\nLog is outputted to %s\n", log_file_path);
 #endif
@@ -71,7 +71,7 @@ void output_log(LogLevel log_level, const char *format, ...)
     if (config.debug)
         fflush(log_file);
     
-#ifdef __unix__
+#ifdef PLATFORM_POSIX
     if (log_level > LOGLEVEL_DEBUG)
         fputs(buffer, stderr);
 #endif
@@ -84,7 +84,9 @@ void output_log(LogLevel log_level, const char *format, ...)
 void print_compiler_info(FILE *stream)
 {
     fputs("Build date: " __DATE__ "\n", stream);
-#ifdef __GNUC__
+#if defined(__clang__)
+    fprintf(stream, "Compiler:   Clang %u.%u\n", __clang_major__, __clang_minor__);
+#elif defined(__GNUC__)
     fprintf(stream, "Compiler:   GCC %u.%u\n", __GNUC__, __GNUC_MINOR__);
 #endif
 #ifdef _MSC_VER

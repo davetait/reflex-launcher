@@ -3,14 +3,12 @@
 This file guides Claude Code (claude.ai/code) when working in this repository.
 
 ## Project
-Flex Launcher is a C11/SDL2 "10-foot UI" application launcher for HTPCs (Windows, Linux, Raspberry Pi). Upstream says it is in maintenance mode: bug fixes and dependency updates only.
+Flex Launcher is a C11/SDL2 "10-foot UI" application launcher for HTPCs (Windows, Linux, Raspberry Pi). This fork also builds on macOS. Upstream says it is in maintenance mode: bug fixes and dependency updates only.
 
 ## Build
-Dependencies: SDL2 ≥ 2.0.14, SDL2_image ≥ 2.0.5, SDL2_ttf ≥ 2.0.15, inih (plus getopt on Windows via vcpkg). Linux finds them through pkg-config. Windows uses vcpkg (`vcpkg.json`, triplet `x64-windows-static`).
+Dependencies: SDL2 ≥ 2.0.14, SDL2_image ≥ 2.0.5, SDL2_ttf ≥ 2.0.15, inih (plus getopt on Windows via vcpkg). Linux and macOS find them through pkg-config (macOS: `brew install cmake pkgconf sdl2 sdl2_image sdl2_ttf inih`). Windows uses vcpkg (`vcpkg.json`, triplet `x64-windows-static`).
 
-macOS is not supported and does not compile as-is. Apple clang doesn't define `__unix__`, so every `#ifdef __unix__` takes the Windows-style `#else` branch, and `src/image.c` then references `PATH_FONTS_RELATIVE`, which is defined only under `_WIN32`. Shutdown, restart and sleep also call `systemctl`.
-
-Linux:
+Linux / macOS:
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Debug     # add -DRPI=1 for Pi defaults, -DEXTRA_WARNINGS=ON for -Wall -Wextra -Wpedantic -Wconversion
 cmake --build build
@@ -20,7 +18,7 @@ cmake --build build
 
 Packaging (matches CI): `-DCMAKE_INSTALL_PREFIX=/usr -DPACKAGE=DEB` then `cmake --build build --target package`. `-DPACKAGE=ARCH` only generates a PKGBUILD and stops.
 
-There are no unit tests. CI (`.github/workflows/build.yml`) only checks that Windows, Debian bullseye, and RPi (qemu chroot) builds succeed. To verify a change, build with `EXTRA_WARNINGS=ON` and run with `-d`, using the generated `build/config.ini`.
+There are no unit tests. CI (`.github/workflows/build.yml`) only checks that Windows, Debian bullseye, macOS, and RPi (qemu chroot) builds succeed. To verify a change, build with `EXTRA_WARNINGS=ON` and run with `-d`, using the generated `build/config.ini`.
 
 ## Architecture
 - `src/launcher.c`: `main()`, SDL init, window creation, the main loop (`SDL_PollEvent` → state updates → `draw_screen()`), input handling, menu navigation, gamepad hot-plug, and `execute_command()` for special commands (`:submenu`, `:back`, `:shutdown`, …; see `SCMD_*` in `launcher.h`). Process-wide state lives in globals defined here (`config`, `state`, `ticks`, `geo`, `renderer`, …). Other files access them with `extern`.
@@ -29,7 +27,7 @@ There are no unit tests. CI (`.github/workflows/build.yml`) only checks that Win
 - `src/image.c`: texture loading, SVG rasterizing via nanosvg (highlight and scroll indicators are generated as SVG strings, see `image.h`), text rendering, slideshow image loading.
 - `src/clock.c`: clock/date rendering.
 - `src/debug.c`: logging (`log_debug`/`log_error`/`log_fatal`) and `-d` diagnostics dumps.
-- `src/platform/`: OS layer behind `platform.h` (process launch, shutdown/sleep, file checks, slideshow dir scan). `unix.c` or `win32.c` is compiled into a static `platform` lib. Shared files guard Windows-only code with `#ifdef _WIN32` and Linux-only code with `#ifdef __unix__`. The two are not exhaustive: other platforms fall into the `#else` branch of `__unix__` checks.
+- `src/platform/`: OS layer behind `platform.h` (process launch, shutdown/sleep, file checks, slideshow dir scan). `unix.c` or `win32.c` is compiled into a static `platform` lib. Shared files guard Windows-only code with `#ifdef _WIN32` and Linux/macOS code with `#ifdef PLATFORM_POSIX` (defined by CMake when `UNIX`). Never use `__unix__`: Apple clang doesn't define it. Mac-only differences (e.g. `osascript`/`pmset` power commands in `unix.h`) use `#ifdef __APPLE__`.
 - `src/external/`: vendored nanosvg. Do not edit; update from upstream instead.
 
 Threads: the slideshow and clock render surfaces on `SDL_CreateThread` workers and signal through `State` flags (`slideshow_background_ready`, `clock_ready`). Only the main thread may touch the `SDL_Renderer`/textures.
