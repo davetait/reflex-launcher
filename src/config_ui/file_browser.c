@@ -226,10 +226,18 @@ FileBrowser *file_browser_open(const char *const *candidates, size_t candidate_c
     }
     fb->filter = filter;
     for (size_t i = 0; i < candidate_count; i++) {
-        if (candidates[i] == NULL || candidates[i][0] == '\0' || strlen(candidates[i]) >= sizeof(fb->dir))
+        if (candidates[i] == NULL || candidates[i][0] == '\0')
             continue;
+        // Absolute, so ".." can always go up (a relative "." has no parent to strip)
+        char *absolute = absolute_path(candidates[i]);
+        const char *candidate = absolute != NULL ? absolute : candidates[i];
         char path[MAX_PATH_CHARS];
-        strcpy(path, candidates[i]);
+        bool fits = strlen(candidate) < sizeof(path);
+        if (fits)
+            strcpy(path, candidate);
+        free(absolute);
+        if (!fits)
+            continue;
         if (load_directory(fb, path))
             return fb;
         // A file path starts in its folder. A folder that can't be listed moves on to the next candidate.
@@ -272,6 +280,15 @@ FileEntry file_browser_entry(const FileBrowser *fb, size_t index)
         entry.kind = fb->items[index].kind;
     }
     return entry;
+}
+
+size_t file_browser_find(const FileBrowser *fb, const char *name)
+{
+    for (size_t i = 0; i < fb->count; i++) {
+        if (strcmp(fb->items[i].name, name) == 0)
+            return i;
+    }
+    return (size_t) -1;
 }
 
 FileBrowserResult file_browser_activate(FileBrowser *fb, size_t index, char *out_path, size_t out_len,

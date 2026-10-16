@@ -301,6 +301,11 @@ void free_dir_entries(DirEntry *entries, size_t count)
     free(entries);
 }
 
+char *absolute_path(const char *path)
+{
+    return realpath(path, NULL);
+}
+
 const char *home_directory(void)
 {
     const char *home = getenv("HOME");

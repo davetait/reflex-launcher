@@ -4,10 +4,18 @@
 #include "settings_schema.h"
 #include "config_io.h"
 #include "config_ui/ui_controller.h"
-#ifdef PLATFORM_POSIX
+#ifdef _WIN32
+#include <direct.h>
+#define MAKE_DIR(p) _mkdir(p)
+#else
 #include <sys/stat.h>
 #include <unistd.h>
+#include <limits.h>
+#define MAKE_DIR(p) mkdir((p), 0755)
 #endif
+#include <SDL.h>
+#include "launcher.h"
+#include "util.h"
 
 static const char *sample =
     "[General]\nDefaultMenu=Main\nVSync=true\n#FPSLimit=\nOnLaunch=Blank\n"
@@ -632,6 +640,57 @@ static void test_both_confirms(void)
     ui_free(&s);
 }
 
+static void test_files_focus_current_file(void)
+{
+    char dir[512], file[600], text[1200];
+    test_tmp_path(dir, sizeof(dir), "ui_focus_files");
+    MAKE_DIR(dir);
+    const char *names[] = {"a.png", "b.png", "c.png"};
+    for (size_t i = 0; i < 3; i++) {
+        snprintf(file, sizeof(file), "%s%s%s", dir, PATH_SEPARATOR, names[i]);
+        test_write_file(file, "x");
+    }
+    snprintf(text, sizeof(text), "[General]\nDefaultMenu=Main\n[Background]\nImage=%s\n[Main]\nEntry1=A;a.png;cmd\n", file);
+    UiState s;
+    ui_init(&s, settings_model_open_text(text));
+    focus(&s, "Background", "Image");
+    ui_apply(&s, UI_SELECT);
+    CHECK(s.mode == MODE_FILES);
+    if (s.mode == MODE_FILES) {
+        CHECK(s.list_index == file_browser_find(s.files, "c.png"));
+        CHECK_STR(file_browser_entry(s.files, s.list_index).name, "c.png");
+    }
+    ui_free(&s);
+}
+
+static void test_files_relative_config_folder(void)
+{
+#ifdef PLATFORM_POSIX
+    // A config path without a folder ("config.ini") browses the folder it is in
+    char tmp[512], cwd[1024], expected[1024];
+    test_tmp_path(tmp, sizeof(tmp), "");
+    if (getcwd(cwd, sizeof(cwd)) == NULL || realpath(tmp, expected) == NULL || chdir(tmp) != 0) {
+        CHECK(0);
+        return;
+    }
+    test_write_file("ui_relative.ini", sample);
+    char err[256] = "";
+    SettingsModel *m = settings_model_open("ui_relative.ini", err, sizeof(err));
+    CHECK(m != NULL);
+    if (m != NULL) {
+        UiState s;
+        ui_init(&s, m);
+        focus(&s, "Gamepad", "ControllerMappingsFile");
+        ui_apply(&s, UI_SELECT);
+        CHECK(s.mode == MODE_FILES);
+        if (s.mode == MODE_FILES)
+            CHECK_STR(file_browser_dir(s.files), expected);
+        ui_free(&s);
+    }
+    CHECK(chdir(cwd) == 0);
+#endif
+}
+
 static void test_error_screen_closes(void)
 {
     UiState s;
@@ -666,4 +725,6 @@ void suite_ui_controller(void)
     test_lockout_confirm();
     test_gamepad_confirm();
     test_both_confirms();
+    test_files_focus_current_file();
+    test_files_relative_config_folder();
 }

@@ -48,6 +48,9 @@ static void open_choice_list(UiState *s, const SettingDef *def);
 static void open_text(UiState *s, const SettingDef *def, TextLayout layout);
 static void open_color(UiState *s, const SettingDef *def);
 static void open_files(UiState *s, const SettingDef *def);
+static const char *last_separator(const char *path);
+static bool config_folder(const UiState *s, char *buf, size_t len);
+static void focus_file(UiState *s, const char *file);
 static void leave_to_rows(UiState *s);
 static bool move_in_list(UiState *s, UiAction a, size_t count);
 static UiResult finish_text(UiState *s);
@@ -443,28 +446,63 @@ static void open_color(UiState *s, const SettingDef *def)
     s->mode = MODE_COLOR;
 }
 
-// The folder holding the config file, or false if there is none
-static bool config_folder(const UiState *s, char *buf, size_t len)
+// Index of the last path separator in `path`, or NULL
+static const char *last_separator(const char *path)
 {
-    const char *path = settings_model_path(s->model);
-    if (path == NULL)
-        return false;
     const char *slash = strrchr(path, '/');
 #ifdef _WIN32
     const char *backslash = strrchr(path, '\\');
     if (backslash != NULL && (slash == NULL || backslash > slash))
         slash = backslash;
 #endif
-    if (slash == NULL)
+    return slash;
+}
+
+// The folder holding the config file, or false if there is none
+static bool config_folder(const UiState *s, char *buf, size_t len)
+{
+    const char *config_path = settings_model_path(s->model);
+    if (config_path == NULL)
         return false;
-    size_t folder_len = (size_t) (slash - path);
-    if (folder_len == 0)
-        folder_len = 1;  // the root
-    if (folder_len >= len)
-        return false;
-    memcpy(buf, path, folder_len);
-    buf[folder_len] = '\0';
-    return true;
+    // Absolute first, so "config.ini" or "C:config.ini" still has a folder
+    char *absolute = absolute_path(config_path);
+    const char *path = absolute != NULL ? absolute : config_path;
+    const char *slash = last_separator(path);
+    bool ok = false;
+    if (slash != NULL) {
+        size_t folder_len = (size_t) (slash - path);
+        if (folder_len == 0)
+            folder_len = 1;  // the root
+        if (folder_len < len) {
+            memcpy(buf, path, folder_len);
+            buf[folder_len] = '\0';
+            ok = true;
+        }
+    }
+    free(absolute);
+    return ok;
+}
+
+// Focuses `file` in the browser if the browser is showing the folder it is in
+static void focus_file(UiState *s, const char *file)
+{
+    char *absolute = absolute_path(file);
+    if (absolute == NULL)
+        return;
+    const char *slash = last_separator(absolute);
+    if (slash != NULL) {
+        const char *dir = file_browser_dir(s->files);
+        size_t dir_len = strlen(dir);
+        while (dir_len > 0 && (dir[dir_len - 1] == '/' || dir[dir_len - 1] == '\\'))
+            dir_len--;
+        size_t folder_len = (size_t) (slash - absolute);
+        if (folder_len == dir_len && strncmp(absolute, dir, dir_len) == 0) {
+            size_t index = file_browser_find(s->files, slash + 1);
+            if (index != (size_t) -1)
+                s->list_index = index;
+        }
+    }
+    free(absolute);
 }
 
 static void open_files(UiState *s, const SettingDef *def)
@@ -499,6 +537,8 @@ static void open_files(UiState *s, const SettingDef *def)
     s->editing = def;
     s->list_index = 0;
     s->mode = MODE_FILES;
+    if (current[0] != '\0')
+        focus_file(s, current);
 }
 
 static UiResult apply_choice_list(UiState *s, UiAction a)

@@ -219,6 +219,44 @@ static void test_path_too_long_for_output(void)
     file_browser_free(fb);
 }
 
+static void test_relative_candidate_can_go_up(void)
+{
+    char err[200] = "", out[1001] = "", before[1001];
+    const char *candidates[] = {"."};
+    FileBrowser *fb = file_browser_open(candidates, 1, FILTER_ANY, err, sizeof(err));
+    CHECK(fb != NULL);
+    if (fb == NULL)
+        return;
+    const char *dir = file_browser_dir(fb);
+#ifdef _WIN32
+    CHECK(dir[0] != '\0' && dir[1] == ':');
+#else
+    CHECK(dir[0] == '/');
+#endif
+    snprintf(before, sizeof(before), "%s", dir);
+    size_t parent = file_browser_find(fb, "..");
+    CHECK(parent != (size_t) -1);
+    if (parent != (size_t) -1) {
+        CHECK(file_browser_activate(fb, parent, out, sizeof(out), err, sizeof(err)) == FB_NAVIGATED);
+        CHECK(strcmp(file_browser_dir(fb), before) != 0);
+    }
+    file_browser_free(fb);
+}
+
+static void test_find(void)
+{
+    char err[200] = "";
+    const char *candidates[] = {root};
+    FileBrowser *fb = file_browser_open(candidates, 1, FILTER_IMAGES, err, sizeof(err));
+    CHECK(fb != NULL);
+    if (fb == NULL)
+        return;
+    CHECK(file_browser_find(fb, "b.png") == 4);
+    CHECK(file_browser_find(fb, "Pics") == 2);
+    CHECK(file_browser_find(fb, "notes.txt") == (size_t) -1);
+    file_browser_free(fb);
+}
+
 void suite_file_browser(void)
 {
     make_tree();
@@ -232,4 +270,6 @@ void suite_file_browser(void)
     test_parent_from_nested_folder();
     test_any_and_dirs_filters();
     test_path_too_long_for_output();
+    test_relative_candidate_can_go_up();
+    test_find();
 }

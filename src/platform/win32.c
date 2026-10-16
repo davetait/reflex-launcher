@@ -404,6 +404,11 @@ void free_dir_entries(DirEntry *entries, size_t count)
     free(entries);
 }
 
+char *absolute_path(const char *path)
+{
+    return _fullpath(NULL, path, 0);
+}
+
 const char *home_directory(void)
 {
     const char *home = getenv("USERPROFILE");

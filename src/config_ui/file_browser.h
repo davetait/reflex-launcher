@@ -21,6 +21,8 @@ const char *file_browser_dir(const FileBrowser *fb);
 size_t file_browser_count(const FileBrowser *fb);
 // Entry names stay valid until the next activate or free
 FileEntry file_browser_entry(const FileBrowser *fb, size_t index);
+// Index of the entry called `name`, or (size_t) -1 if there is none
+size_t file_browser_find(const FileBrowser *fb, const char *name);
 // Folders navigate; files and "Use this folder" write the full path to out_path
 FileBrowserResult file_browser_activate(FileBrowser *fb, size_t index, char *out_path, size_t out_len,
                                         char *err, size_t err_len);

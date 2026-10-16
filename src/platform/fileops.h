@@ -19,6 +19,10 @@ typedef struct {
 int list_directory(const char *path, DirEntry **entries, size_t *count);
 void free_dir_entries(DirEntry *entries, size_t count);
 
+// `path` as an absolute path (POSIX realpath(), so it must exist; Windows _fullpath()).
+// Returns a malloc'd string the caller frees, or NULL on failure.
+char *absolute_path(const char *path);
+
 // The user's home directory ($HOME or %USERPROFILE%), or NULL if unknown
 const char *home_directory(void);
 
