@@ -20,7 +20,11 @@ defaults:
   run:
     shell: bash
 env:
-  VCPKG_COMMITTISH: 10b7a178346f3f0abef60cecd5130e295afd8da4
+  # Debian 11 (bullseye) is EOL; its packages now only live on archive.debian.org
+  BULLSEYE_SOURCES: |
+    deb http://archive.debian.org/debian bullseye main
+    deb http://archive.debian.org/debian-security bullseye-security main
+  VCPKG_COMMITTISH: 9e593bb18ea69cc5095e012465dcd675a822ed0d # 2026.07.29
 
 permissions:
   actions: none
@@ -100,6 +104,7 @@ jobs:
       - name: "Install dependencies"
         run: |
           if [[ "${{matrix.config.name}}" == "Debian" ]]; then
+            echo "$BULLSEYE_SOURCES" > /etc/apt/sources.list
             apt update && apt install -y build-essential git cmake pkg-config libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libinih-dev
           fi
 
@@ -174,6 +179,7 @@ jobs:
         run: |
           LOOPBACK=$(sudo losetup -f -P --show rpi.img)
           sudo mount ${LOOPBACK}p2 -o rw root
+          echo "$BULLSEYE_SOURCES" | sudo tee root/etc/apt/sources.list > /dev/null
           sudo cp /usr/bin/qemu-aarch64-static root/usr/bin
           sudo cp -r ${{env.REPO_TITLE}} root
           sudo cp rpi root/usr/bin
