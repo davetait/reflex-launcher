@@ -135,6 +135,23 @@ static void test_validation_boundaries(void)
     check_valid("Screensaver", SETTING_SCREENSAVER_IDLE_TIME, "2", false);
 }
 
+static void test_sections_cover_all_rows(void)
+{
+    for (size_t i = 0; i < settings_schema_count; i++) {
+        bool found = false;
+        for (size_t s = 0; schema_sections[s] != NULL; s++)
+            found = found || strcmp(schema_sections[s], settings_schema[i].section) == 0;
+        if (!found)
+            fprintf(stderr, "  section \"%s\" missing from schema_sections\n", settings_schema[i].section);
+        CHECK(found);
+    }
+    const SettingDef *out[64];
+    size_t count = schema_section_settings("Clock", out, 64);
+    CHECK(count == 13);
+    for (size_t i = 0; i < count; i++)
+        CHECK_STR(out[i]->section, "Clock");
+}
+
 void suite_schema(void)
 {
     test_every_setting_macro_is_in_the_table_once();
@@ -142,4 +159,5 @@ void suite_schema(void)
     test_defaults_match_shipped_sample();
     test_defaults_validate();
     test_validation_boundaries();
+    test_sections_cover_all_rows();
 }

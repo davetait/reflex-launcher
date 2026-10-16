@@ -15,12 +15,8 @@ static bool fail(char *err, size_t err_len, const char *format, ...);
 static bool parse_int_strict(const char *s, long *out);
 static bool percent_in_range(const char *value, int min, int max);
 
-#define SETTING_ROW(section, id_name, key, type, min, max, choices, def, label, help) \
-    { id_name, section, key, label, help, type, min, max, choices, def }
-// Two layers: NO_RANGE must expand before SETTING_ROW counts its arguments, and #id
-// must see the macro name before it expands to the key string
-#define S(section, id, ...) SETTING_ROW(section, #id, id, __VA_ARGS__)
-#define NO_RANGE 0, 0
+#define S(section, id, type, min, max, choices, def, label, help) \
+    { #id, section, id, label, help, type, min, max, choices, def }
 #define CHOICES(mode) ((const char *const *) mode_settings[mode])
 
 const char *const schema_sections[] = {
@@ -30,28 +26,28 @@ const char *const schema_sections[] = {
 
 const SettingDef settings_schema[] = {
     // General
-    S("General", SETTING_DEFAULT_MENU, SET_MENU_REF, NO_RANGE, NULL, "Main", "Home menu", "Menu shown at startup and by :home"),
-    S("General", SETTING_VSYNC, SET_BOOL, NO_RANGE, NULL, "true", "VSync", "Sync drawing to the display refresh rate"),
+    S("General", SETTING_DEFAULT_MENU, SET_MENU_REF, 0, 0, NULL, "Main", "Home menu", "Menu shown at startup and by :home"),
+    S("General", SETTING_VSYNC, SET_BOOL, 0, 0, NULL, "true", "VSync", "Sync drawing to the display refresh rate"),
     S("General", SETTING_FPS_LIMIT, SET_INT, MIN_FPS_LIMIT + 1, 1000, NULL, NULL, "FPS limit", "Frame rate cap when VSync is off"),
     S("General", SETTING_APPLICATION_TIMEOUT, SET_INT, MIN_APPLICATION_TIMEOUT, MAX_APPLICATION_TIMEOUT, NULL, "15", "Launch timeout (s)", "How long to wait for a launched app to take focus"),
-    S("General", SETTING_ON_LAUNCH, SET_CHOICE, NO_RANGE, CHOICES(MODE_SETTING_ON_LAUNCH), "Blank", "When an app launches", "Blank the screen, do nothing, or quit the launcher"),
-    S("General", SETTING_WRAP_ENTRIES, SET_BOOL, NO_RANGE, NULL, "false", "Wrap around", "Moving past the last entry returns to the first"),
-    S("General", SETTING_RESET_ON_BACK, SET_BOOL, NO_RANGE, NULL, "false", "Reset on back", "Return to the first entry when going back a menu"),
-    S("General", SETTING_MOUSE_SELECT, SET_BOOL, NO_RANGE, NULL, "false", "Mouse select", "Left click launches the highlighted entry"),
-    S("General", SETTING_INHIBIT_OS_SCREENSAVER, SET_BOOL, NO_RANGE, NULL, "true", "Block OS screensaver", "Stop the system screensaver while the launcher is open"),
-    S("General", SETTING_STARTUP_CMD, SET_COMMAND, NO_RANGE, NULL, NULL, "Startup command", "Runs once when the launcher starts"),
-    S("General", SETTING_QUIT_CMD, SET_COMMAND, NO_RANGE, NULL, NULL, "Quit command", "Runs when the launcher quits"),
+    S("General", SETTING_ON_LAUNCH, SET_CHOICE, 0, 0, CHOICES(MODE_SETTING_ON_LAUNCH), "Blank", "When an app launches", "Blank the screen, do nothing, or quit the launcher"),
+    S("General", SETTING_WRAP_ENTRIES, SET_BOOL, 0, 0, NULL, "false", "Wrap around", "Moving past the last entry returns to the first"),
+    S("General", SETTING_RESET_ON_BACK, SET_BOOL, 0, 0, NULL, "false", "Reset on back", "Return to the first entry when going back a menu"),
+    S("General", SETTING_MOUSE_SELECT, SET_BOOL, 0, 0, NULL, "false", "Mouse select", "Left click launches the highlighted entry"),
+    S("General", SETTING_INHIBIT_OS_SCREENSAVER, SET_BOOL, 0, 0, NULL, "true", "Block OS screensaver", "Stop the system screensaver while the launcher is open"),
+    S("General", SETTING_STARTUP_CMD, SET_COMMAND, 0, 0, NULL, NULL, "Startup command", "Runs once when the launcher starts"),
+    S("General", SETTING_QUIT_CMD, SET_COMMAND, 0, 0, NULL, NULL, "Quit command", "Runs when the launcher quits"),
 
     // Background
-    S("Background", SETTING_BACKGROUND_MODE, SET_CHOICE, NO_RANGE, CHOICES(MODE_SETTING_BACKGROUND), "Color", "Background", "Solid color, image, slideshow, or transparent"),
-    S("Background", SETTING_BACKGROUND_COLOR, SET_COLOR, NO_RANGE, NULL, "#000000", "Color", "Background color in Color mode"),
-    S("Background", SETTING_BACKGROUND_IMAGE, SET_FILE, NO_RANGE, NULL, NULL, "Image", "Background image in Image mode"),
-    S("Background", SETTING_SLIDESHOW_DIRECTORY, SET_DIR, NO_RANGE, NULL, NULL, "Slideshow folder", "Folder of images for Slideshow mode"),
+    S("Background", SETTING_BACKGROUND_MODE, SET_CHOICE, 0, 0, CHOICES(MODE_SETTING_BACKGROUND), "Color", "Background", "Solid color, image, slideshow, or transparent"),
+    S("Background", SETTING_BACKGROUND_COLOR, SET_COLOR, 0, 0, NULL, "#000000", "Color", "Background color in Color mode"),
+    S("Background", SETTING_BACKGROUND_IMAGE, SET_FILE, 0, 0, NULL, NULL, "Image", "Background image in Image mode"),
+    S("Background", SETTING_SLIDESHOW_DIRECTORY, SET_DIR, 0, 0, NULL, NULL, "Slideshow folder", "Folder of images for Slideshow mode"),
     S("Background", SETTING_SLIDESHOW_IMAGE_DURATION, SET_INT, MIN_SLIDESHOW_IMAGE_DURATION / 1000, MAX_SLIDESHOW_IMAGE_DURATION / 1000, NULL, "30", "Seconds per image", "How long each slideshow image shows"),
     S("Background", SETTING_SLIDESHOW_TRANSITION_TIME, SET_DECIMAL, 0, MAX_SLIDESHOW_TRANSITION_TIME / 1000, NULL, "3", "Transition (s)", "Crossfade time between slideshow images"),
-    S("Background", SETTING_CHROMA_KEY_COLOR, SET_COLOR, NO_RANGE, NULL, "#010101", "Chroma key", "Color made see-through in Transparent mode (Windows)"),
-    S("Background", SETTING_BACKGROUND_OVERLAY, SET_BOOL, NO_RANGE, NULL, "false", "Overlay", "Tint the background with a color"),
-    S("Background", SETTING_BACKGROUND_OVERLAY_COLOR, SET_COLOR, NO_RANGE, NULL, "#000000", "Overlay color", "Tint color"),
+    S("Background", SETTING_CHROMA_KEY_COLOR, SET_COLOR, 0, 0, NULL, "#010101", "Chroma key", "Color made see-through in Transparent mode (Windows)"),
+    S("Background", SETTING_BACKGROUND_OVERLAY, SET_BOOL, 0, 0, NULL, "false", "Overlay", "Tint the background with a color"),
+    S("Background", SETTING_BACKGROUND_OVERLAY_COLOR, SET_COLOR, 0, 0, NULL, "#000000", "Overlay color", "Tint color"),
     S("Background", SETTING_BACKGROUND_OVERLAY_OPACITY, SET_PERCENT, 0, 100, NULL, "50%", "Overlay opacity", "Tint strength"),
 
     // Layout
@@ -61,84 +57,84 @@ const SettingDef settings_schema[] = {
     S("Layout", SETTING_VCENTER, SET_PERCENT, (int) (MIN_VCENTER * 100), (int) (MAX_VCENTER * 100), NULL, "50%", "Vertical position", "Where the icon row sits, as % of screen height"),
 
     // Titles
-    S("Titles", SETTING_TITLES_ENABLED, SET_BOOL, NO_RANGE, NULL, "true", "Show titles", "Show a title under each icon"),
-    S("Titles", SETTING_TITLE_FONT, SET_FONT, NO_RANGE, NULL, NULL, "Font", "TTF font for titles"),
+    S("Titles", SETTING_TITLES_ENABLED, SET_BOOL, 0, 0, NULL, "true", "Show titles", "Show a title under each icon"),
+    S("Titles", SETTING_TITLE_FONT, SET_FONT, 0, 0, NULL, NULL, "Font", "TTF font for titles"),
     S("Titles", SETTING_TITLE_FONT_SIZE, SET_INT, 8, 300, NULL, "36", "Font size", "Title text size in points"),
-    S("Titles", SETTING_TITLE_FONT_COLOR, SET_COLOR, NO_RANGE, NULL, "#FFFFFF", "Color", "Title text color"),
+    S("Titles", SETTING_TITLE_FONT_COLOR, SET_COLOR, 0, 0, NULL, "#FFFFFF", "Color", "Title text color"),
     S("Titles", SETTING_TITLE_OPACITY, SET_PERCENT, 0, 100, NULL, "100%", "Opacity", "Title text opacity"),
-    S("Titles", SETTING_TITLE_SHADOWS, SET_BOOL, NO_RANGE, NULL, "false", "Shadows", "Drop shadow behind title text"),
-    S("Titles", SETTING_TITLE_SHADOW_COLOR, SET_COLOR, NO_RANGE, NULL, "#000000", "Shadow color", "Title shadow color"),
-    S("Titles", SETTING_TITLE_OVERSIZE_MODE, SET_CHOICE, NO_RANGE, CHOICES(MODE_SETTING_OVERSIZE), "Shrink", "Long titles", "Truncate, shrink, or leave titles wider than the icon"),
+    S("Titles", SETTING_TITLE_SHADOWS, SET_BOOL, 0, 0, NULL, "false", "Shadows", "Drop shadow behind title text"),
+    S("Titles", SETTING_TITLE_SHADOW_COLOR, SET_COLOR, 0, 0, NULL, "#000000", "Shadow color", "Title shadow color"),
+    S("Titles", SETTING_TITLE_OVERSIZE_MODE, SET_CHOICE, 0, 0, CHOICES(MODE_SETTING_OVERSIZE), "Shrink", "Long titles", "Truncate, shrink, or leave titles wider than the icon"),
     S("Titles", SETTING_TITLE_PADDING, SET_INT, 0, 500, NULL, "20", "Padding (px)", "Space between icon and title"),
 
     // Highlight
-    S("Highlight", SETTING_HIGHLIGHT_ENABLED, SET_BOOL, NO_RANGE, NULL, "true", "Show highlight", "Draw a box behind the selected entry"),
-    S("Highlight", SETTING_HIGHLIGHT_FILL_COLOR, SET_COLOR, NO_RANGE, NULL, "#FFFFFF", "Fill color", "Highlight box color"),
+    S("Highlight", SETTING_HIGHLIGHT_ENABLED, SET_BOOL, 0, 0, NULL, "true", "Show highlight", "Draw a box behind the selected entry"),
+    S("Highlight", SETTING_HIGHLIGHT_FILL_COLOR, SET_COLOR, 0, 0, NULL, "#FFFFFF", "Fill color", "Highlight box color"),
     S("Highlight", SETTING_HIGHLIGHT_FILL_OPACITY, SET_PERCENT, 0, 100, NULL, "25%", "Fill opacity", "Highlight box opacity"),
     S("Highlight", SETTING_HIGHLIGHT_OUTLINE_SIZE, SET_INT, 0, 100, NULL, "0", "Outline (px)", "Highlight border width; 0 for none"),
-    S("Highlight", SETTING_HIGHLIGHT_OUTLINE_COLOR, SET_COLOR, NO_RANGE, NULL, "#0000FF", "Outline color", "Highlight border color"),
+    S("Highlight", SETTING_HIGHLIGHT_OUTLINE_COLOR, SET_COLOR, 0, 0, NULL, "#0000FF", "Outline color", "Highlight border color"),
     S("Highlight", SETTING_HIGHLIGHT_OUTLINE_OPACITY, SET_PERCENT, 0, 100, NULL, "100%", "Outline opacity", "Highlight border opacity"),
     S("Highlight", SETTING_HIGHLIGHT_CORNER_RADIUS, SET_INT, MIN_RX_SIZE, MAX_RX_SIZE, NULL, "0", "Corner radius", "Rounded corners on the highlight box"),
     S("Highlight", SETTING_HIGHLIGHT_VPADDING, SET_INT, 0, 500, NULL, "30", "Vertical padding (px)", "Space above and below the entry"),
     S("Highlight", SETTING_HIGHLIGHT_HPADDING, SET_INT, 0, 500, NULL, "30", "Horizontal padding (px)", "Space left and right of the entry"),
 
     // Scroll Indicators
-    S("Scroll Indicators", SETTING_SCROLL_INDICATORS, SET_BOOL, NO_RANGE, NULL, "true", "Show arrows", "Arrows when more entries are off screen"),
-    S("Scroll Indicators", SETTING_SCROLL_INDICATOR_FILL_COLOR, SET_COLOR, NO_RANGE, NULL, "#FFFFFF", "Color", "Arrow color"),
+    S("Scroll Indicators", SETTING_SCROLL_INDICATORS, SET_BOOL, 0, 0, NULL, "true", "Show arrows", "Arrows when more entries are off screen"),
+    S("Scroll Indicators", SETTING_SCROLL_INDICATOR_FILL_COLOR, SET_COLOR, 0, 0, NULL, "#FFFFFF", "Color", "Arrow color"),
     S("Scroll Indicators", SETTING_SCROLL_INDICATOR_OUTLINE_SIZE, SET_INT, 0, 100, NULL, "0", "Outline (px)", "Arrow border width; 0 for none"),
-    S("Scroll Indicators", SETTING_SCROLL_INDICATOR_OUTLINE_COLOR, SET_COLOR, NO_RANGE, NULL, "#000000", "Outline color", "Arrow border color"),
+    S("Scroll Indicators", SETTING_SCROLL_INDICATOR_OUTLINE_COLOR, SET_COLOR, 0, 0, NULL, "#000000", "Outline color", "Arrow border color"),
     S("Scroll Indicators", SETTING_SCROLL_INDICATOR_OPACITY, SET_PERCENT, 0, 100, NULL, "100%", "Opacity", "Arrow opacity"),
 
     // Clock
-    S("Clock", SETTING_CLOCK_ENABLED, SET_BOOL, NO_RANGE, NULL, "false", "Show clock", "Show the time in a corner"),
-    S("Clock", SETTING_CLOCK_SHOW_DATE, SET_BOOL, NO_RANGE, NULL, "false", "Show date", "Show the date under the time"),
-    S("Clock", SETTING_CLOCK_ALIGNMENT, SET_CHOICE, NO_RANGE, CHOICES(MODE_SETTING_ALIGNMENT), "Left", "Corner", "Top-left or top-right"),
-    S("Clock", SETTING_CLOCK_FONT, SET_FONT, NO_RANGE, NULL, NULL, "Font", "TTF font for the clock"),
+    S("Clock", SETTING_CLOCK_ENABLED, SET_BOOL, 0, 0, NULL, "false", "Show clock", "Show the time in a corner"),
+    S("Clock", SETTING_CLOCK_SHOW_DATE, SET_BOOL, 0, 0, NULL, "false", "Show date", "Show the date under the time"),
+    S("Clock", SETTING_CLOCK_ALIGNMENT, SET_CHOICE, 0, 0, CHOICES(MODE_SETTING_ALIGNMENT), "Left", "Corner", "Top-left or top-right"),
+    S("Clock", SETTING_CLOCK_FONT, SET_FONT, 0, 0, NULL, NULL, "Font", "TTF font for the clock"),
     S("Clock", SETTING_CLOCK_FONT_SIZE, SET_INT, 8, 300, NULL, "50", "Font size", "Clock text size in points"),
-    S("Clock", SETTING_CLOCK_FONT_COLOR, SET_COLOR, NO_RANGE, NULL, "#FFFFFF", "Color", "Clock text color"),
-    S("Clock", SETTING_CLOCK_SHADOWS, SET_BOOL, NO_RANGE, NULL, "false", "Shadows", "Drop shadow behind the clock"),
-    S("Clock", SETTING_CLOCK_SHADOW_COLOR, SET_COLOR, NO_RANGE, NULL, "#000000", "Shadow color", "Clock shadow color"),
+    S("Clock", SETTING_CLOCK_FONT_COLOR, SET_COLOR, 0, 0, NULL, "#FFFFFF", "Color", "Clock text color"),
+    S("Clock", SETTING_CLOCK_SHADOWS, SET_BOOL, 0, 0, NULL, "false", "Shadows", "Drop shadow behind the clock"),
+    S("Clock", SETTING_CLOCK_SHADOW_COLOR, SET_COLOR, 0, 0, NULL, "#000000", "Shadow color", "Clock shadow color"),
     S("Clock", SETTING_CLOCK_MARGIN, SET_LENGTH, 0, 10000, NULL, "5%", "Margin", "Distance from the screen edge, in % or pixels"),
     S("Clock", SETTING_CLOCK_OPACITY, SET_PERCENT, 0, 100, NULL, "100%", "Opacity", "Clock text opacity"),
-    S("Clock", SETTING_CLOCK_TIME_FORMAT, SET_CHOICE, NO_RANGE, CHOICES(MODE_SETTING_TIME_FORMAT), "Auto", "Time format", "24-hour, 12-hour, or from your region"),
-    S("Clock", SETTING_CLOCK_DATE_FORMAT, SET_CHOICE, NO_RANGE, CHOICES(MODE_SETTING_DATE_FORMAT), "Auto", "Date format", "Month first, day first, or from your region"),
-    S("Clock", SETTING_CLOCK_INCLUDE_WEEKDAY, SET_BOOL, NO_RANGE, NULL, "true", "Weekday", "Include the day of the week in the date"),
+    S("Clock", SETTING_CLOCK_TIME_FORMAT, SET_CHOICE, 0, 0, CHOICES(MODE_SETTING_TIME_FORMAT), "Auto", "Time format", "24-hour, 12-hour, or from your region"),
+    S("Clock", SETTING_CLOCK_DATE_FORMAT, SET_CHOICE, 0, 0, CHOICES(MODE_SETTING_DATE_FORMAT), "Auto", "Date format", "Month first, day first, or from your region"),
+    S("Clock", SETTING_CLOCK_INCLUDE_WEEKDAY, SET_BOOL, 0, 0, NULL, "true", "Weekday", "Include the day of the week in the date"),
 
     // Screensaver
-    S("Screensaver", SETTING_SCREENSAVER_ENABLED, SET_BOOL, NO_RANGE, NULL, "false", "Dim when idle", "Fade the screen after a period of no input"),
+    S("Screensaver", SETTING_SCREENSAVER_ENABLED, SET_BOOL, 0, 0, NULL, "false", "Dim when idle", "Fade the screen after a period of no input"),
     S("Screensaver", SETTING_SCREENSAVER_IDLE_TIME, SET_INT, MIN_SCREENSAVER_IDLE_TIME, MAX_SCREENSAVER_IDLE_TIME, NULL, "300", "Idle time (s)", "Seconds of no input before dimming"),
     S("Screensaver", SETTING_SCREENSAVER_INTENSITY, SET_PERCENT, 1, 100, NULL, "70%", "Dim amount", "How dark the screen gets"),
-    S("Screensaver", SETTING_SCREENSAVER_PAUSE_SLIDESHOW, SET_BOOL, NO_RANGE, NULL, "true", "Pause slideshow", "Stop changing images while dimmed"),
+    S("Screensaver", SETTING_SCREENSAVER_PAUSE_SLIDESHOW, SET_BOOL, 0, 0, NULL, "true", "Pause slideshow", "Stop changing images while dimmed"),
 
     // Gamepad
-    S("Gamepad", SETTING_GAMEPAD_ENABLED, SET_BOOL, NO_RANGE, NULL, "false", "Gamepad", "Control the launcher with a gamepad"),
+    S("Gamepad", SETTING_GAMEPAD_ENABLED, SET_BOOL, 0, 0, NULL, "false", "Gamepad", "Control the launcher with a gamepad"),
     S("Gamepad", SETTING_GAMEPAD_DEVICE, SET_INT, -1, 15, NULL, "-1", "Device", "Which gamepad to use; -1 for any"),
-    S("Gamepad", SETTING_GAMEPAD_MAPPINGS_FILE, SET_FILE, NO_RANGE, NULL, NULL, "Mappings file", "SDL gamecontrollerdb.txt for unrecognized pads"),
-    S("Gamepad", SETTING_GAMEPAD_LSTICK_XM, SET_COMMAND, NO_RANGE, NULL, ":left", "Left stick left", "Command for this input"),
-    S("Gamepad", SETTING_GAMEPAD_LSTICK_XP, SET_COMMAND, NO_RANGE, NULL, ":right", "Left stick right", "Command for this input"),
-    S("Gamepad", SETTING_GAMEPAD_LSTICK_YM, SET_COMMAND, NO_RANGE, NULL, NULL, "Left stick up", "Command for this input"),
-    S("Gamepad", SETTING_GAMEPAD_LSTICK_YP, SET_COMMAND, NO_RANGE, NULL, NULL, "Left stick down", "Command for this input"),
-    S("Gamepad", SETTING_GAMEPAD_RSTICK_XM, SET_COMMAND, NO_RANGE, NULL, NULL, "Right stick left", "Command for this input"),
-    S("Gamepad", SETTING_GAMEPAD_RSTICK_XP, SET_COMMAND, NO_RANGE, NULL, NULL, "Right stick right", "Command for this input"),
-    S("Gamepad", SETTING_GAMEPAD_RSTICK_YM, SET_COMMAND, NO_RANGE, NULL, NULL, "Right stick up", "Command for this input"),
-    S("Gamepad", SETTING_GAMEPAD_RSTICK_YP, SET_COMMAND, NO_RANGE, NULL, NULL, "Right stick down", "Command for this input"),
-    S("Gamepad", SETTING_GAMEPAD_LTRIGGER, SET_COMMAND, NO_RANGE, NULL, NULL, "Left trigger", "Command for this input"),
-    S("Gamepad", SETTING_GAMEPAD_RTRIGGER, SET_COMMAND, NO_RANGE, NULL, NULL, "Right trigger", "Command for this input"),
-    S("Gamepad", SETTING_GAMEPAD_BUTTON_A, SET_COMMAND, NO_RANGE, NULL, ":select", "A button", "Command for this input"),
-    S("Gamepad", SETTING_GAMEPAD_BUTTON_B, SET_COMMAND, NO_RANGE, NULL, ":back", "B button", "Command for this input"),
-    S("Gamepad", SETTING_GAMEPAD_BUTTON_X, SET_COMMAND, NO_RANGE, NULL, NULL, "X button", "Command for this input"),
-    S("Gamepad", SETTING_GAMEPAD_BUTTON_Y, SET_COMMAND, NO_RANGE, NULL, NULL, "Y button", "Command for this input"),
-    S("Gamepad", SETTING_GAMEPAD_BUTTON_BACK, SET_COMMAND, NO_RANGE, NULL, NULL, "Back button", "Command for this input"),
-    S("Gamepad", SETTING_GAMEPAD_BUTTON_GUIDE, SET_COMMAND, NO_RANGE, NULL, NULL, "Guide button", "Command for this input"),
-    S("Gamepad", SETTING_GAMEPAD_BUTTON_START, SET_COMMAND, NO_RANGE, NULL, NULL, "Start button", "Command for this input"),
-    S("Gamepad", SETTING_GAMEPAD_BUTTON_LEFT_STICK, SET_COMMAND, NO_RANGE, NULL, NULL, "Left stick press", "Command for this input"),
-    S("Gamepad", SETTING_GAMEPAD_BUTTON_RIGHT_STICK, SET_COMMAND, NO_RANGE, NULL, NULL, "Right stick press", "Command for this input"),
-    S("Gamepad", SETTING_GAMEPAD_BUTTON_LEFT_SHOULDER, SET_COMMAND, NO_RANGE, NULL, NULL, "Left shoulder", "Command for this input"),
-    S("Gamepad", SETTING_GAMEPAD_BUTTON_RIGHT_SHOULDER, SET_COMMAND, NO_RANGE, NULL, NULL, "Right shoulder", "Command for this input"),
-    S("Gamepad", SETTING_GAMEPAD_BUTTON_DPAD_UP, SET_COMMAND, NO_RANGE, NULL, NULL, "D-pad up", "Command for this input"),
-    S("Gamepad", SETTING_GAMEPAD_BUTTON_DPAD_DOWN, SET_COMMAND, NO_RANGE, NULL, NULL, "D-pad down", "Command for this input"),
-    S("Gamepad", SETTING_GAMEPAD_BUTTON_DPAD_LEFT, SET_COMMAND, NO_RANGE, NULL, ":left", "D-pad left", "Command for this input"),
-    S("Gamepad", SETTING_GAMEPAD_BUTTON_DPAD_RIGHT, SET_COMMAND, NO_RANGE, NULL, ":right", "D-pad right", "Command for this input"),
+    S("Gamepad", SETTING_GAMEPAD_MAPPINGS_FILE, SET_FILE, 0, 0, NULL, NULL, "Mappings file", "SDL gamecontrollerdb.txt for unrecognized pads"),
+    S("Gamepad", SETTING_GAMEPAD_LSTICK_XM, SET_COMMAND, 0, 0, NULL, ":left", "Left stick left", "Command for this input"),
+    S("Gamepad", SETTING_GAMEPAD_LSTICK_XP, SET_COMMAND, 0, 0, NULL, ":right", "Left stick right", "Command for this input"),
+    S("Gamepad", SETTING_GAMEPAD_LSTICK_YM, SET_COMMAND, 0, 0, NULL, NULL, "Left stick up", "Command for this input"),
+    S("Gamepad", SETTING_GAMEPAD_LSTICK_YP, SET_COMMAND, 0, 0, NULL, NULL, "Left stick down", "Command for this input"),
+    S("Gamepad", SETTING_GAMEPAD_RSTICK_XM, SET_COMMAND, 0, 0, NULL, NULL, "Right stick left", "Command for this input"),
+    S("Gamepad", SETTING_GAMEPAD_RSTICK_XP, SET_COMMAND, 0, 0, NULL, NULL, "Right stick right", "Command for this input"),
+    S("Gamepad", SETTING_GAMEPAD_RSTICK_YM, SET_COMMAND, 0, 0, NULL, NULL, "Right stick up", "Command for this input"),
+    S("Gamepad", SETTING_GAMEPAD_RSTICK_YP, SET_COMMAND, 0, 0, NULL, NULL, "Right stick down", "Command for this input"),
+    S("Gamepad", SETTING_GAMEPAD_LTRIGGER, SET_COMMAND, 0, 0, NULL, NULL, "Left trigger", "Command for this input"),
+    S("Gamepad", SETTING_GAMEPAD_RTRIGGER, SET_COMMAND, 0, 0, NULL, NULL, "Right trigger", "Command for this input"),
+    S("Gamepad", SETTING_GAMEPAD_BUTTON_A, SET_COMMAND, 0, 0, NULL, ":select", "A button", "Command for this input"),
+    S("Gamepad", SETTING_GAMEPAD_BUTTON_B, SET_COMMAND, 0, 0, NULL, ":back", "B button", "Command for this input"),
+    S("Gamepad", SETTING_GAMEPAD_BUTTON_X, SET_COMMAND, 0, 0, NULL, NULL, "X button", "Command for this input"),
+    S("Gamepad", SETTING_GAMEPAD_BUTTON_Y, SET_COMMAND, 0, 0, NULL, NULL, "Y button", "Command for this input"),
+    S("Gamepad", SETTING_GAMEPAD_BUTTON_BACK, SET_COMMAND, 0, 0, NULL, NULL, "Back button", "Command for this input"),
+    S("Gamepad", SETTING_GAMEPAD_BUTTON_GUIDE, SET_COMMAND, 0, 0, NULL, NULL, "Guide button", "Command for this input"),
+    S("Gamepad", SETTING_GAMEPAD_BUTTON_START, SET_COMMAND, 0, 0, NULL, NULL, "Start button", "Command for this input"),
+    S("Gamepad", SETTING_GAMEPAD_BUTTON_LEFT_STICK, SET_COMMAND, 0, 0, NULL, NULL, "Left stick press", "Command for this input"),
+    S("Gamepad", SETTING_GAMEPAD_BUTTON_RIGHT_STICK, SET_COMMAND, 0, 0, NULL, NULL, "Right stick press", "Command for this input"),
+    S("Gamepad", SETTING_GAMEPAD_BUTTON_LEFT_SHOULDER, SET_COMMAND, 0, 0, NULL, NULL, "Left shoulder", "Command for this input"),
+    S("Gamepad", SETTING_GAMEPAD_BUTTON_RIGHT_SHOULDER, SET_COMMAND, 0, 0, NULL, NULL, "Right shoulder", "Command for this input"),
+    S("Gamepad", SETTING_GAMEPAD_BUTTON_DPAD_UP, SET_COMMAND, 0, 0, NULL, NULL, "D-pad up", "Command for this input"),
+    S("Gamepad", SETTING_GAMEPAD_BUTTON_DPAD_DOWN, SET_COMMAND, 0, 0, NULL, NULL, "D-pad down", "Command for this input"),
+    S("Gamepad", SETTING_GAMEPAD_BUTTON_DPAD_LEFT, SET_COMMAND, 0, 0, NULL, ":left", "D-pad left", "Command for this input"),
+    S("Gamepad", SETTING_GAMEPAD_BUTTON_DPAD_RIGHT, SET_COMMAND, 0, 0, NULL, ":right", "D-pad right", "Command for this input"),
 };
 
 const size_t settings_schema_count = sizeof(settings_schema) / sizeof(settings_schema[0]);
