@@ -267,3 +267,33 @@ Manual verification, on macOS locally, with Linux and Windows build-checked via 
 - **`launcher_unload` completeness.** Any resource missed leaks on each reload. Mitigated by the 50-reload memory check and by making `cleanup()` reuse `launcher_unload()`, so exit and reload share one path.
 - **Windows reload behavior** (window and renderer recreation with transparency and `SDL_SysWMinfo`) can only be build-checked here, not run. Flagged for manual testing on a Windows machine.
 - **inih parity.** `ini_doc` must agree with inih on what counts as a key, a comment, and a section, or `get` could disagree with what the launcher actually loads. This is mitigated by the parity test that runs `ini_parse_string` on the same corpus. A distro or vcpkg inih built with non-default flags would still diverge (NOT VERIFIED for every platform).
+
+## Plan-time amendments (2026-10-16)
+
+Reading the code while writing the implementation plan turned up facts that change parts of this spec. The plan (`docs/superpowers/plans/2026-10-16-config-foundation.md`) follows these amendments:
+
+1. **Defaults equivalence test replaced.** Many built-in defaults in `Config` are sentinels (`""`, `-1`) that `validate_settings()` resolves later. For example, `title_padding = -1` becomes `icon_size / 10`, and `title_oversize_mode` is built-in `Truncated` while the shipped sample sets `Shrink`. A parsed default therefore never byte-equals `default_config`. It's replaced by two tests:
+   - `default_value` in the schema must equal the shipped sample `config.ini`, including its `#Key=value` lines. So `default_value` means "the sample value the UI pre-fills", and "reset to default" means `ini_doc_unset`.
+   - `config_handler` must recognize every schema section/key: some schema-valid value must change parser state.
+2. **The parser keeps state across parses.** `add_hotkey()` and `add_gamepad_control()` hold `static` "current" pointers, and `util.c` keeps `menu`/`entry` globals, so a reload would write through freed pointers. `reset_config_parser()` resets them, and `parse_config_file()` calls it.
+3. **`INI_MAX_LINE` is 200.** inih reads at most 199 bytes per line, newline included, and treats the rest as a new line. `config_save` rejects edited values whose line would exceed that.
+4. **Lists.** `config_handler` treats *every* key in a menu or `[Hotkeys]` section as an item, regardless of its name, and inih merges duplicate sections. So `ini_doc_get_list(doc, section, &values)` has no prefix parameter and returns every active value in the section. `ini_doc_set_list` takes the prefix used to name the rewritten keys.
+5. **Values inih can't round-trip.** A value containing whitespace followed by `;` (e.g. `sh -c "a ; b"`), a newline, or leading/trailing whitespace is truncated or trimmed by inih. `ini_doc_set` and `ini_doc_set_list` return `false` for such values instead of silently corrupting them.
+6. **Schema types and fields.**
+   - `SET_LENGTH` (percent or pixels) is added for `IconSpacing` and `[Clock] Margin`.
+   - `SET_DECIMAL` is added for `SlideshowTransitionTime`, which accepts fractional seconds.
+   - `SettingDef` gets an `id` field (the `SETTING_*` macro name) for the coverage test.
+   - `SET_TEXT` and `SET_COMMAND` reject empty strings, because an empty `StartupCmd` would be executed; "none" is expressed by unsetting.
+7. **Smaller API and file changes.**
+   - `ini_doc_load` doesn't log; callers do.
+   - `config_save` takes the path explicitly and a `force` flag, and returns a `ConfigSaveResult` enum.
+   - New `ini_doc_mark_saved` and `ini_doc_value_is_representable`.
+   - `default_config` lives in `src/config_defaults.c` so tests can link it without `launcher.c`.
+   - `replace_file()` lives in the new `src/platform/fileops.h`. Windows uses `MoveFileExA`, not `W`, to interpret paths the same way as the app's existing `fopen` calls.
+8. **Reload details found in code.**
+   - The gamepad subsystem and `SDL_HINT_VIDEO_ALLOW_SCREENSAVER` were tied to `SDL_Init` before config parsing. They move into `launcher_load()`: `SDL_InitSubSystem` or `SDL_QuitSubSystem`, and `SDL_Enable`/`DisableScreenSaver`.
+   - Already-connected controllers are enumerated on reload.
+   - `init_slideshow()` error paths must NULL `slideshow` after `quit_slideshow()`.
+   - `clk` is `calloc`'d so its surfaces start NULL.
+   - Destroying the renderer frees all textures, so unload doesn't track textures individually.
+   - Windows transparency isn't reverted if a reload switches away from `Transparent` mode (NOT VERIFIED; Windows build-check only).
