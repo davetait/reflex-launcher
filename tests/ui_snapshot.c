@@ -9,6 +9,10 @@
 #include <SDL.h>
 #include <SDL_image.h>
 #include <SDL_ttf.h>
+#ifdef PLATFORM_POSIX
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 #include "launcher.h"
 #include "config_ui/ui_controller.h"
 #include "config_ui/ui_text.h"
@@ -30,6 +34,7 @@ static void act(UiState *s, UiAction a);
 static size_t find_section(const char *name);
 static size_t find_row(size_t section, const char *key);
 static void go_to(UiState *s, const char *section, const char *key);
+static void snapshot_read_only(const char *config_path);
 
 int main(int argc, char *argv[])
 {
@@ -130,16 +135,32 @@ int main(int argc, char *argv[])
     act(&s, UI_RIGHT);
     act(&s, UI_SELECT);  // Keep editing
 
+    // The error config_ui_open shows when the file can't be read
+    char missing[1024];
+    snprintf(missing, sizeof(missing), "%s/no-such-folder/config.ini", out_dir);
+    SettingsModel *unreadable = settings_model_open(missing, err, sizeof(err));
+    if (unreadable != NULL)
+        fail("opening a missing config");
     UiState error_state;
-    ui_init_error(&error_state, "Could not read /usr/share/flex-launcher/config.ini: Permission denied. "
-                                "Copy it to ~/.config/flex-launcher/config.ini to edit your settings.");
+    ui_init_error(&error_state, err);
     snapshot(&error_state, 1920, 1080, "10-message.png");
     ui_free(&error_state);
 
     go_to(&s, "General", "VSync");
     snapshot(&s, 1280, 720, "11-general-720p.png");
 
+    // A home menu without the Settings entry
+    go_to(&s, "General", "DefaultMenu");
+    act(&s, UI_RIGHT);
+    act(&s, UI_SAVE);
+    if (s.mode != MODE_CONFIRM_RISK)
+        fail("lockout confirmation did not open");
+    snapshot(&s, 1920, 1080, "13-confirm-risk.png");
+    act(&s, UI_BACK);
+
     ui_free(&s);
+
+    snapshot_read_only(argv[1]);
     IMG_Quit();
     TTF_Quit();
     SDL_Quit();
@@ -235,4 +256,46 @@ static void go_to(UiState *s, const char *section, const char *key)
     act(s, UI_SELECT);
     while (s->row < target_row)
         act(s, UI_DOWN);
+}
+
+// Save on a config in a read-only folder offers to save a copy (Linux and macOS)
+static void snapshot_read_only(const char *config_path)
+{
+#ifdef PLATFORM_POSIX
+    char dir[1024], path[1100];
+    snprintf(dir, sizeof(dir), "%s/read-only", out_dir);
+    snprintf(path, sizeof(path), "%s/config.ini", dir);
+    mkdir(dir, 0700);
+    chmod(dir, 0700);
+    size_t length = 0;
+    char *text = SDL_LoadFile(config_path, &length);
+    FILE *file = fopen(path, "wb");
+    if (text == NULL || file == NULL || fwrite(text, 1, length, file) != length)
+        fail("copying the config");
+    fclose(file);
+    SDL_free(text);
+    chmod(dir, 0500);
+
+    char err[512] = "";
+    SettingsModel *model = settings_model_open(path, err, sizeof(err));
+    if (model == NULL)
+        fail("opening the read-only config");
+    settings_model_set_user_config_path(model, "/home/pi/.config/flex-launcher/config.ini");
+    UiState s;
+    ui_init(&s, model);
+    go_to(&s, "General", "VSync");
+    act(&s, UI_SELECT);
+    act(&s, UI_SAVE);
+    if (s.mode == MODE_CONFIRM_COPY)
+        snapshot(&s, 1920, 1080, "14-confirm-copy.png");
+    else
+        fprintf(stderr, "reflex-ui-snapshot: skipped 14-confirm-copy.png (the folder is writable, e.g. as root)\n");
+    ui_free(&s);
+
+    chmod(dir, 0700);
+    remove(path);
+    remove(dir);
+#else
+    (void) config_path;
+#endif
 }
