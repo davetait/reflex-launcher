@@ -188,6 +188,41 @@ static void test_save_round_trip(void)
     settings_model_close(text_only);
 }
 
+static void test_config_reachable(void)
+{
+    // Directly on the home menu
+    SettingsModel *m = settings_model_open_text(
+        "[General]\nDefaultMenu=Main\n[Main]\nEntry1=Settings;s.svg;:config\n[System]\nEntry1=S;s.png;:sleep\n");
+    CHECK(settings_model_config_reachable(m));
+    settings_model_close(m);
+
+    // Through a submenu, and not from a menu that can't reach it
+    m = settings_model_open_text(
+        "[General]\nDefaultMenu=Main\n[Main]\nEntry1=Sys;s.png;:submenu System\n"
+        "[System]\nEntry1=Back;b.png;:submenu Main\nEntry2=Settings;s.svg;:config\n[Other]\nEntry1=A;a.png;cmd\n");
+    CHECK(settings_model_config_reachable(m));
+    char err[256] = "";
+    CHECK(settings_model_set(m, find("General", "DefaultMenu"), "Other", err, sizeof(err)));
+    CHECK(!settings_model_config_reachable(m));
+    settings_model_close(m);
+
+    // Not an exact :config command, or a menu nobody opens
+    m = settings_model_open_text(
+        "[General]\nDefaultMenu=Main\n[Main]\nEntry1=A;a.png;:configure\n[Hidden]\nEntry1=S;s.svg;:config\n");
+    CHECK(!settings_model_config_reachable(m));
+    settings_model_close(m);
+
+    // A hotkey or a gamepad binding
+    m = settings_model_open_text(
+        "[General]\nDefaultMenu=Main\n[Hotkeys]\nHotkey1=#73;:config\n[Main]\nEntry1=A;a.png;cmd\n");
+    CHECK(settings_model_config_reachable(m));
+    settings_model_close(m);
+    m = settings_model_open_text(
+        "[General]\nDefaultMenu=Main\n[Gamepad]\nButtonBack=:config\n[Main]\nEntry1=A;a.png;cmd\n");
+    CHECK(settings_model_config_reachable(m));
+    settings_model_close(m);
+}
+
 void suite_settings_model(void)
 {
     test_sections_and_rows();
@@ -199,4 +234,5 @@ void suite_settings_model(void)
     test_set_validates();
     test_step_unsupported_type();
     test_save_round_trip();
+    test_config_reachable();
 }

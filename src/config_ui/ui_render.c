@@ -133,6 +133,7 @@ void ui_render(SDL_Renderer *r, UiTextCache *c, const UiState *s, int w, int h)
         case MODE_COLOR:
         case MODE_CONFIRM_EXIT:
         case MODE_CONFIRM_OVERWRITE:
+        case MODE_CONFIRM_RISK:
         case MODE_MESSAGE:
             fill_rect(&f, 0, 0, w, h, COLOR_SCRIM);
             break;
@@ -146,6 +147,7 @@ void ui_render(SDL_Renderer *r, UiTextCache *c, const UiState *s, int w, int h)
         case MODE_COLOR: draw_color(&f); break;
         case MODE_CONFIRM_EXIT:
         case MODE_CONFIRM_OVERWRITE:
+        case MODE_CONFIRM_RISK:
         case MODE_MESSAGE: draw_dialog(&f); break;
         default: break;
     }
@@ -677,7 +679,7 @@ static void draw_footer(const Frame *f)
         draw_text(f, UI_FONT_SMALL, line, COLOR_ERROR, x0, cy1, ALIGN_LEFT);
     }
     else if (s->model != NULL && s->mode != MODE_SECTIONS && s->mode != MODE_MESSAGE &&
-             s->mode != MODE_CONFIRM_EXIT && s->mode != MODE_CONFIRM_OVERWRITE) {
+             s->mode != MODE_CONFIRM_EXIT && s->mode != MODE_CONFIRM_OVERWRITE && s->mode != MODE_CONFIRM_RISK) {
         const SettingDef *def = s->editing != NULL ? s->editing : settings_model_row(s->section, s->row);
         if (def != NULL) {
             fit_text(f, UI_FONT_SMALL, def->help, x1 - x0, false, line, sizeof(line));

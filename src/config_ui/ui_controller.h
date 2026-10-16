@@ -11,7 +11,7 @@
 typedef enum { UI_UP, UI_DOWN, UI_LEFT, UI_RIGHT, UI_SELECT, UI_BACK, UI_RESET, UI_SAVE, UI_ERASE, UI_ACCEPT } UiAction;
 typedef enum { UI_RESULT_NONE, UI_RESULT_CLOSE, UI_RESULT_SAVED } UiResult;
 typedef enum { MODE_SECTIONS, MODE_ROWS, MODE_CHOICE_LIST, MODE_TEXT, MODE_FILES, MODE_COLOR,
-               MODE_CONFIRM_EXIT, MODE_CONFIRM_OVERWRITE, MODE_MESSAGE } UiMode;
+               MODE_CONFIRM_EXIT, MODE_CONFIRM_OVERWRITE, MODE_CONFIRM_RISK, MODE_MESSAGE } UiMode;
 
 #define UI_PALETTE_SIZE 16
 extern const char *const ui_palette[UI_PALETTE_SIZE];
@@ -26,8 +26,12 @@ typedef struct {
     TextInput *text;
     FileBrowser *files;
     const SettingDef *editing;      // setting being edited in a sub-mode
-    UiMode return_mode;             // mode a MESSAGE returns to (also where CONFIRM_OVERWRITE came from)
+    UiMode return_mode;             // mode a MESSAGE returns to (also where a save's dialogs return to)
     bool close_after_message;
+    bool config_reachable_at_open;  // Settings could be opened with the config as it was loaded
+    unsigned risks_accepted;        // risks confirmed with "Save anyway" during the current save
+    unsigned risk_shown;            // the risk MODE_CONFIRM_RISK is asking about
+    bool input_from_gamepad;        // the last input came from a gamepad (set by config_ui)
     char message[512];              // dialog text (MESSAGE, CONFIRM_*)
     char footer[256];               // transient footer error, cleared on next move
 } UiState;

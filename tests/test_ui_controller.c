@@ -503,6 +503,135 @@ static void test_save_from_pick_modes(void)
     ui_free(&s);
 }
 
+static const char *reachable_sample =
+    "[General]\nDefaultMenu=Main\n[Gamepad]\nEnabled=true\n"
+    "[Main]\nEntry1=Settings;s.svg;:config\n[System]\nEntry1=S;s.png;:sleep\n";
+
+static const char *const lockout_message =
+    "After saving, Settings can't be opened from the home menu. Save anyway?";
+static const char *const gamepad_message =
+    "These gamepad changes may stop your controller from working in the launcher. Save anyway?";
+
+static void check_risk_dialog(UiState *s, const char *message)
+{
+    CHECK(s->mode == MODE_CONFIRM_RISK);
+    CHECK_STR(s->message, message);
+    CHECK(s->list_index == 0);
+    size_t count = 0;
+    const char *const *buttons = ui_dialog_buttons(s, &count);
+    CHECK(count == 2);
+    if (count == 2) {
+        CHECK_STR(buttons[0], "Keep editing");
+        CHECK_STR(buttons[1], "Save anyway");
+    }
+}
+
+static void test_lockout_confirm(void)
+{
+    UiState s;
+    if (!open_file_model(&s, "ui_lockout.ini", reachable_sample))
+        return;
+    focus(&s, "General", "DefaultMenu");
+    ui_apply(&s, UI_RIGHT);
+    CHECK_STR(shown(&s, "General", "DefaultMenu"), "System");
+    CHECK(ui_apply(&s, UI_SAVE) == UI_RESULT_NONE);
+    check_risk_dialog(&s, lockout_message);
+    // Back keeps editing, where the save started
+    CHECK(ui_apply(&s, UI_BACK) == UI_RESULT_NONE);
+    CHECK(s.mode == MODE_ROWS);
+    CHECK(settings_model_dirty(s.model));
+    // "Keep editing" is the default button
+    ui_apply(&s, UI_SAVE);
+    CHECK(ui_apply(&s, UI_SELECT) == UI_RESULT_NONE);
+    CHECK(s.mode == MODE_ROWS);
+    // From the section list too
+    ui_apply(&s, UI_BACK);
+    ui_apply(&s, UI_SAVE);
+    CHECK(s.mode == MODE_CONFIRM_RISK);
+    ui_apply(&s, UI_BACK);
+    CHECK(s.mode == MODE_SECTIONS);
+    // Save anyway writes the file
+    ui_apply(&s, UI_SAVE);
+    ui_apply(&s, UI_RIGHT);
+    CHECK(ui_apply(&s, UI_SELECT) == UI_RESULT_SAVED);
+    char path[512];
+    test_tmp_path(path, sizeof(path), "ui_lockout.ini");
+    char *text = test_read_file(path);
+    CHECK(text != NULL && strstr(text, "DefaultMenu=System") != NULL);
+    free(text);
+    ui_free(&s);
+
+    // A home menu that still reaches Settings saves without asking
+    if (!open_file_model(&s, "ui_lockout_ok.ini", reachable_sample))
+        return;
+    focus(&s, "General", "VSync");
+    ui_apply(&s, UI_SELECT);
+    CHECK(ui_apply(&s, UI_SAVE) == UI_RESULT_SAVED);
+    ui_free(&s);
+}
+
+static void test_gamepad_confirm(void)
+{
+    UiState s;
+    if (!open_file_model(&s, "ui_gamepad.ini", reachable_sample))
+        return;
+    s.input_from_gamepad = true;
+    focus(&s, "Gamepad", "Enabled");
+    ui_apply(&s, UI_SELECT);
+    CHECK_STR(shown(&s, "Gamepad", "Enabled"), "false");
+    CHECK(ui_apply(&s, UI_SAVE) == UI_RESULT_NONE);
+    check_risk_dialog(&s, gamepad_message);
+    ui_apply(&s, UI_BACK);
+    CHECK(s.mode == MODE_ROWS);
+    ui_apply(&s, UI_SAVE);
+    ui_apply(&s, UI_RIGHT);
+    CHECK(ui_apply(&s, UI_SELECT) == UI_RESULT_SAVED);
+    ui_free(&s);
+
+    // Any binding change asks too, but only when a gamepad is driving the screen
+    if (!open_file_model(&s, "ui_gamepad_bind.ini", reachable_sample))
+        return;
+    s.input_from_gamepad = true;
+    focus(&s, "Gamepad", "ButtonX");
+    ui_apply(&s, UI_SELECT);
+    ui_type(&s, ":home");
+    ui_apply(&s, UI_ACCEPT);
+    CHECK(ui_apply(&s, UI_SAVE) == UI_RESULT_NONE);
+    check_risk_dialog(&s, gamepad_message);
+    ui_apply(&s, UI_BACK);
+    s.input_from_gamepad = false;
+    CHECK(ui_apply(&s, UI_SAVE) == UI_RESULT_SAVED);
+    ui_free(&s);
+}
+
+static void test_both_confirms(void)
+{
+    UiState s;
+    if (!open_file_model(&s, "ui_both.ini", reachable_sample))
+        return;
+    s.input_from_gamepad = true;
+    focus(&s, "General", "DefaultMenu");
+    ui_apply(&s, UI_RIGHT);
+    focus(&s, "Gamepad", "Enabled");
+    ui_apply(&s, UI_SELECT);
+    ui_apply(&s, UI_SAVE);
+    check_risk_dialog(&s, lockout_message);
+    ui_apply(&s, UI_RIGHT);
+    CHECK(ui_apply(&s, UI_SELECT) == UI_RESULT_NONE);
+    check_risk_dialog(&s, gamepad_message);
+    // Keep editing on the second one returns to where the save started
+    ui_apply(&s, UI_BACK);
+    CHECK(s.mode == MODE_ROWS);
+    ui_apply(&s, UI_SAVE);
+    check_risk_dialog(&s, lockout_message);
+    ui_apply(&s, UI_RIGHT);
+    ui_apply(&s, UI_SELECT);
+    check_risk_dialog(&s, gamepad_message);
+    ui_apply(&s, UI_RIGHT);
+    CHECK(ui_apply(&s, UI_SELECT) == UI_RESULT_SAVED);
+    ui_free(&s);
+}
+
 static void test_error_screen_closes(void)
 {
     UiState s;
@@ -534,4 +663,7 @@ void suite_ui_controller(void)
     test_save_from_text_mode();
     test_save_from_pick_modes();
     test_error_screen_closes();
+    test_lockout_confirm();
+    test_gamepad_confirm();
+    test_both_confirms();
 }

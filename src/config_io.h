@@ -15,6 +15,10 @@ bool config_check(const IniDoc *doc, char *err, size_t err_len);
 // True for any section name that is neither a settings section nor [Hotkeys]
 bool config_is_menu_section(const char *section);
 bool config_entry_is_valid(const char *value);
+// The command of a menu entry ("title;icon;command") as config_handler() parses it; malloc'd or NULL
+char *config_entry_command(const char *value);
+// The command of a valid hotkey ("#keycode;command"); malloc'd, or NULL if the hotkey is invalid
+char *config_hotkey_command(const char *value);
 ConfigSaveResult config_save(IniDoc *doc, const char *path, bool force, char *err, size_t err_len);
 
 #endif

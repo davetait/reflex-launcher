@@ -83,18 +83,24 @@ void config_ui_handle_event(const SDL_Event *e)
     UiAction action;
     switch (e->type) {
         case SDL_KEYDOWN:
-            if (map_key(&e->key, &action))
+            if (map_key(&e->key, &action)) {
+                ui.input_from_gamepad = false;
                 apply(action);
+            }
             break;
 
         case SDL_TEXTINPUT:
-            if (ui.mode == MODE_TEXT && !(SDL_GetModState() & KMOD_CTRL))
+            if (ui.mode == MODE_TEXT && !(SDL_GetModState() & KMOD_CTRL)) {
+                ui.input_from_gamepad = false;
                 ui_type(&ui, e->text.text);
+            }
             break;
 
         case SDL_CONTROLLERBUTTONDOWN:
-            if (map_button(e->cbutton.button, &action))
+            if (map_button(e->cbutton.button, &action)) {
+                ui.input_from_gamepad = true;
                 apply(action);
+            }
             break;
 
         // The left stick is read in config_ui_update, which also handles its repeat
@@ -112,11 +118,13 @@ void config_ui_update(Uint32 now)
         stick_direction = direction;
         if (direction != STICK_NONE) {
             stick_next_repeat = now + STICK_INITIAL_DELAY;
+            ui.input_from_gamepad = true;
             apply((UiAction) direction);
         }
     }
     else if (direction != STICK_NONE && (Sint32) (now - stick_next_repeat) >= 0) {
         stick_next_repeat = now + STICK_REPEAT_PERIOD;
+        ui.input_from_gamepad = true;
         apply((UiAction) direction);
     }
 }

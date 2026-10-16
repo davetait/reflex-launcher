@@ -8,6 +8,8 @@
 #include "../ini_doc.h"
 
 #define VALUE_BUF 512
+#define CONFIG_COMMAND ":config"
+#define SUBMENU_PREFIX ":submenu "
 
 struct settings_model {
     IniDoc *doc;
@@ -25,6 +27,7 @@ static bool parse_percent(const char *s, long *out);
 static bool step_choice(SettingsModel *m, const SettingDef *def, const char *base, bool has_base, int direction);
 static bool step_number(const SettingDef *def, const char *base, bool has_base, int direction, char *out, size_t out_len);
 static long clamp_long(long value, long min, long max);
+static size_t find_menu(const char **sections, size_t count, const char *name);
 
 SettingsModel *settings_model_open(const char *config_path, char *err, size_t err_len)
 {
@@ -227,6 +230,78 @@ bool settings_model_dirty(const SettingsModel *m)
     return ini_doc_dirty_count(m->doc) > 0;
 }
 
+bool settings_model_section_dirty(const SettingsModel *m, const char *section)
+{
+    for (size_t i = 0; i < ini_doc_dirty_count(m->doc); i++) {
+        const char *dirty_section, *key;
+        ini_doc_dirty_get(m->doc, i, &dirty_section, &key);
+        if (strcmp(dirty_section, section) == 0)
+            return true;
+    }
+    return false;
+}
+
+bool settings_model_config_reachable(const SettingsModel *m)
+{
+    bool found = false;
+
+    // Menus: breadth-first from the home menu through ":submenu" entries
+    const char **sections = NULL;
+    size_t section_count = ini_doc_sections(m->doc, &sections);
+    bool *queued = calloc(section_count + 1, sizeof(bool));
+    size_t *queue = malloc((section_count + 1) * sizeof(size_t));
+    size_t head = 0, tail = 0;
+    if (sections != NULL && queued != NULL && queue != NULL) {
+        size_t start = find_menu(sections, section_count, ini_doc_get(m->doc, "General", "DefaultMenu"));
+        if (start < section_count) {
+            queued[start] = true;
+            queue[tail++] = start;
+        }
+    }
+    while (!found && head < tail) {
+        const char **values = NULL;
+        size_t count = ini_doc_get_list(m->doc, sections[queue[head++]], &values);
+        for (size_t i = 0; !found && i < count; i++) {
+            char *cmd = config_entry_command(values[i]);
+            if (cmd != NULL && strcmp(cmd, CONFIG_COMMAND) == 0) {
+                found = true;
+            }
+            else if (cmd != NULL && strncmp(cmd, SUBMENU_PREFIX, strlen(SUBMENU_PREFIX)) == 0) {
+                size_t next = find_menu(sections, section_count, cmd + strlen(SUBMENU_PREFIX));
+                if (next < section_count && !queued[next]) {
+                    queued[next] = true;
+                    queue[tail++] = next;
+                }
+            }
+            free(cmd);
+        }
+        free(values);
+    }
+    free(queue);
+    free(queued);
+    free(sections);
+
+    // Hotkeys
+    const char **hotkeys = NULL;
+    size_t hotkey_count = ini_doc_get_list(m->doc, "Hotkeys", &hotkeys);
+    for (size_t i = 0; !found && i < hotkey_count; i++) {
+        char *cmd = config_hotkey_command(hotkeys[i]);
+        found = cmd != NULL && strcmp(cmd, CONFIG_COMMAND) == 0;
+        free(cmd);
+    }
+    free(hotkeys);
+
+    // Gamepad bindings
+    for (size_t i = 0; !found && i < settings_schema_count; i++) {
+        const SettingDef *def = &settings_schema[i];
+        if (def->type == SET_COMMAND && strcmp(def->section, "Gamepad") == 0) {
+            const char *value = ini_doc_get(m->doc, def->section, def->key);
+            found = value != NULL && strcmp(value, CONFIG_COMMAND) == 0;
+        }
+    }
+    return found;
+}
+
 const char *settings_model_path(const SettingsModel *m)
 {
     return m->path;
@@ -319,6 +394,18 @@ static bool parse_percent(const char *s, long *out)
     put(number, sizeof(number), s);
     number[len - 1] = '\0';
     return parse_whole(number, out);
+}
+
+// Index of the menu section `name` in `sections`, or `count` if it isn't one
+static size_t find_menu(const char **sections, size_t count, const char *name)
+{
+    if (name == NULL || !config_is_menu_section(name))
+        return count;
+    for (size_t i = 0; i < count; i++) {
+        if (strcmp(sections[i], name) == 0)
+            return i;
+    }
+    return count;
 }
 
 static long clamp_long(long value, long min, long max)

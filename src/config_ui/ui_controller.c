@@ -8,6 +8,8 @@
 #define VALUE_BUF 512
 #define PATH_BUF 1024
 #define CUSTOM_CELL UI_PALETTE_SIZE
+#define RISK_LOCKOUT 1u
+#define RISK_GAMEPAD 2u
 
 const char *const ui_palette[UI_PALETTE_SIZE] = {
     "#FFFFFF", "#C0C0C0", "#808080", "#000000", "#FF3B30", "#FF9500", "#FFCC00", "#34C759",
@@ -16,6 +18,10 @@ const char *const ui_palette[UI_PALETTE_SIZE] = {
 
 static const char *const exit_buttons[] = {"Save", "Discard", "Keep editing"};
 static const char *const overwrite_buttons[] = {"Overwrite", "Cancel"};
+static const char *const risk_buttons[] = {"Keep editing", "Save anyway"};
+static const char *const lockout_message = "After saving, Settings can't be opened from the home menu. Save anyway?";
+static const char *const gamepad_message =
+    "These gamepad changes may stop your controller from working in the launcher. Save anyway?";
 static const char *const message_buttons[] = {"OK"};
 
 static void put(char *buf, size_t len, const char *s);
@@ -24,7 +30,9 @@ static const SettingDef *current_def(const UiState *s);
 static bool is_steppable(SettingType type);
 static void clear_sub_state(UiState *s);
 static void show_message(UiState *s, UiMode return_mode, const char *text);
-static UiResult save(UiState *s, bool force);
+static UiResult save(UiState *s);
+static UiResult continue_save(UiState *s, bool force);
+static bool gamepad_at_risk(const UiState *s);
 static UiResult apply_sections(UiState *s, UiAction a);
 static UiResult apply_rows(UiState *s, UiAction a);
 static UiResult apply_choice_list(UiState *s, UiAction a);
@@ -33,6 +41,7 @@ static UiResult apply_files(UiState *s, UiAction a);
 static UiResult apply_color(UiState *s, UiAction a);
 static UiResult apply_confirm_exit(UiState *s, UiAction a);
 static UiResult apply_confirm_overwrite(UiState *s, UiAction a);
+static UiResult apply_confirm_risk(UiState *s, UiAction a);
 static UiResult apply_message(UiState *s, UiAction a);
 static void open_editor(UiState *s, const SettingDef *def);
 static void open_choice_list(UiState *s, const SettingDef *def);
@@ -49,6 +58,7 @@ void ui_init(UiState *s, SettingsModel *model)
     memset(s, 0, sizeof(*s));
     s->model = model;
     s->mode = MODE_SECTIONS;
+    s->config_reachable_at_open = model != NULL && settings_model_config_reachable(model);
 }
 
 void ui_init_error(UiState *s, const char *message)
@@ -78,6 +88,7 @@ UiResult ui_apply(UiState *s, UiAction a)
         case MODE_COLOR: return apply_color(s, a);
         case MODE_CONFIRM_EXIT: return apply_confirm_exit(s, a);
         case MODE_CONFIRM_OVERWRITE: return apply_confirm_overwrite(s, a);
+        case MODE_CONFIRM_RISK: return apply_confirm_risk(s, a);
         case MODE_MESSAGE: return apply_message(s, a);
     }
     return UI_RESULT_NONE;
@@ -100,6 +111,9 @@ const char *const *ui_dialog_buttons(const UiState *s, size_t *count)
         case MODE_CONFIRM_OVERWRITE:
             *count = 2;
             return overwrite_buttons;
+        case MODE_CONFIRM_RISK:
+            *count = 2;
+            return risk_buttons;
         case MODE_MESSAGE:
             *count = 1;
             return message_buttons;
@@ -192,9 +206,32 @@ static bool move_in_list(UiState *s, UiAction a, size_t count)
     return false;
 }
 
-static UiResult save(UiState *s, bool force)
+// Starts a save from the current mode; its dialogs return there
+static UiResult save(UiState *s)
 {
-    UiMode origin = s->mode == MODE_CONFIRM_OVERWRITE ? s->return_mode : s->mode;
+    s->return_mode = s->mode;
+    s->risks_accepted = 0;
+    return continue_save(s, false);
+}
+
+// Asks about each risk not yet accepted, then writes the file
+static UiResult continue_save(UiState *s, bool force)
+{
+    UiMode origin = s->return_mode;
+    unsigned risk = 0;
+    if (!(s->risks_accepted & RISK_LOCKOUT) && s->config_reachable_at_open
+        && !settings_model_config_reachable(s->model))
+        risk = RISK_LOCKOUT;
+    else if (!(s->risks_accepted & RISK_GAMEPAD) && gamepad_at_risk(s))
+        risk = RISK_GAMEPAD;
+    if (risk != 0) {
+        put(s->message, sizeof(s->message), risk == RISK_LOCKOUT ? lockout_message : gamepad_message);
+        s->risk_shown = risk;
+        s->list_index = 0;
+        s->mode = MODE_CONFIRM_RISK;
+        return UI_RESULT_NONE;
+    }
+
     char err[sizeof(s->message)] = "";
     ConfigSaveResult result = settings_model_save(s->model, force, err, sizeof(err));
     switch (result) {
@@ -202,7 +239,6 @@ static UiResult save(UiState *s, bool force)
             return UI_RESULT_SAVED;
         case CONFIG_SAVE_CHANGED_ON_DISK:
             put(s->message, sizeof(s->message), err);
-            s->return_mode = origin;
             s->list_index = 0;
             s->mode = MODE_CONFIRM_OVERWRITE;
             return UI_RESULT_NONE;
@@ -214,11 +250,31 @@ static UiResult save(UiState *s, bool force)
     }
 }
 
+// Driving the screen with a gamepad while saving changes that could stop it working:
+// [Gamepad] Enabled ending up false (as the launcher parses it), or any changed binding
+static bool gamepad_at_risk(const UiState *s)
+{
+    if (!s->input_from_gamepad)
+        return false;
+    if (settings_model_section_dirty(s->model, "Gamepad"))
+        return true;
+    for (size_t i = 0; i < settings_schema_count; i++) {
+        const SettingDef *def = &settings_schema[i];
+        if (strcmp(def->id, "SETTING_GAMEPAD_ENABLED") == 0) {
+            char value[VALUE_BUF];
+            ValueState state = settings_model_display(s->model, def, value, sizeof(value));
+            bool enabled = state != VALUE_INVALID && (strcmp(value, "true") == 0 || strcmp(value, "True") == 0);
+            return !enabled;
+        }
+    }
+    return false;
+}
+
 // Drops any in-progress pick and saves what is already stored
 static UiResult leave_and_save(UiState *s)
 {
     leave_to_rows(s);
-    return save(s, false);
+    return save(s);
 }
 
 static UiResult apply_sections(UiState *s, UiAction a)
@@ -245,7 +301,7 @@ static UiResult apply_sections(UiState *s, UiAction a)
             }
             return UI_RESULT_CLOSE;
         case UI_SAVE:
-            return save(s, false);
+            return save(s);
         default:
             break;
     }
@@ -288,7 +344,7 @@ static UiResult apply_rows(UiState *s, UiAction a)
             settings_model_reset(s->model, def);
             break;
         case UI_SAVE:
-            return save(s, false);
+            return save(s);
         case UI_SELECT:
             if (def->type == SET_BOOL) {
                 if (!settings_model_step(s->model, def, 1, err, sizeof(err)))
@@ -506,7 +562,7 @@ static UiResult apply_text(UiState *s, UiAction a)
         case UI_SAVE:
             finish_text(s);
             if (s->mode == MODE_ROWS)
-                return save(s, false);
+                return save(s);
             break;
         case UI_SELECT: {
             TextResult result = text_input_press(s->text);
@@ -615,13 +671,13 @@ static UiResult apply_confirm_exit(UiState *s, UiAction a)
     if (move_in_list(s, a, 3))
         return UI_RESULT_NONE;
     if (a == UI_SAVE)
-        return save(s, false);
+        return save(s);
     if (a == UI_BACK) {
         s->mode = MODE_SECTIONS;
     }
     else if (a == UI_SELECT) {
         if (s->list_index == 0)
-            return save(s, false);
+            return save(s);
         if (s->list_index == 1)
             return UI_RESULT_CLOSE;
         s->mode = MODE_SECTIONS;
@@ -638,7 +694,22 @@ static UiResult apply_confirm_overwrite(UiState *s, UiAction a)
         s->list_index = 0;
     }
     else if (a == UI_SELECT) {
-        return save(s, true);
+        return continue_save(s, true);
+    }
+    return UI_RESULT_NONE;
+}
+
+static UiResult apply_confirm_risk(UiState *s, UiAction a)
+{
+    if (move_in_list(s, a, 2))
+        return UI_RESULT_NONE;
+    if (a == UI_BACK || (a == UI_SELECT && s->list_index == 0)) {
+        s->mode = s->return_mode;
+        s->list_index = 0;
+    }
+    else if (a == UI_SELECT) {
+        s->risks_accepted |= s->risk_shown;
+        return continue_save(s, false);
     }
     return UI_RESULT_NONE;
 }

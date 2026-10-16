@@ -39,6 +39,11 @@ void settings_model_reset(SettingsModel *m, const SettingDef *def);
 size_t settings_model_choices(const SettingsModel *m, const SettingDef *def, char ***out);
 
 bool settings_model_dirty(const SettingsModel *m);
+// True if a changed (dirty) key is in this section
+bool settings_model_section_dirty(const SettingsModel *m, const char *section);
+// True if Settings can be opened: a ":config" entry in a menu reachable from the home
+// menu (following ":submenu" entries), a ":config" hotkey, or a ":config" gamepad binding
+bool settings_model_config_reachable(const SettingsModel *m);
 const char *settings_model_path(const SettingsModel *m);
 ConfigSaveResult settings_model_save(SettingsModel *m, bool force, char *err, size_t err_len);
 
