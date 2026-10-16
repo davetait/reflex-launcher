@@ -248,3 +248,10 @@ if (WIN32)
   string(REPLACE "/" "\\" ICONS_PREFIX ${ICONS_PREFIX})
 endif ()
 configure_file("${PROJECT_SOURCE_DIR}/config/config.ini.in" "${PROJECT_BINARY_DIR}/install/config.ini")
+
+# Unit tests: cmake -DBUILD_TESTING=ON, then ctest
+option(BUILD_TESTING "Build the unit tests" OFF)
+if (BUILD_TESTING)
+  enable_testing()
+  add_subdirectory(tests)
+endif ()
