@@ -293,6 +293,7 @@ typedef struct {
     char *gamepad_mappings_file;
     bool debug;
     char *exe_path;
+    char *config_path;
     Menu *first_menu;
     size_t num_menus;
     bool clock_enabled;
@@ -312,6 +313,8 @@ typedef struct {
     Uint32 slideshow_image_duration;
     Uint32 slideshow_transition_time;
 } Config;
+
+extern const Config default_config;
 
 void quit_slideshow(void);
 void set_draw_color(void);

@@ -44,116 +44,7 @@ static void disconnect_gamepad(int id, bool disconnect, bool remove);
 static void open_controller(Gamepad *gamepad, bool raise_error);
 static void cleanup(void);
 
-// Initialize default settings
-Config config = {
-    .default_menu                     = NULL,
-    .background_image                 = NULL,
-    .slideshow_directory              = NULL,
-    .title_font_path                  = NULL,
-    .vsync                            = true,
-    .fps_limit                        = -1,
-    .application_timeout              = DEFAULT_APPLICATION_TIMEOUT * 1000,
-    .titles_enabled                   = DEFAULT_TITLES_ENABLED,
-    .title_font_size                  = DEFAULT_FONT_SIZE,
-    .title_font_color.r               = DEFAULT_TITLE_FONT_COLOR_R,
-    .title_font_color.g               = DEFAULT_TITLE_FONT_COLOR_G,
-    .title_font_color.b               = DEFAULT_TITLE_FONT_COLOR_B,
-    .title_font_color.a               = DEFAULT_TITLE_FONT_COLOR_A,
-    .title_shadows                    = DEFAULT_TITLE_SHADOWS,
-    .title_shadow_color.r             = DEFAULT_TITLE_SHADOW_COLOR_R,
-    .title_shadow_color.g             = DEFAULT_TITLE_SHADOW_COLOR_G,
-    .title_shadow_color.b             = DEFAULT_TITLE_SHADOW_COLOR_B,
-    .title_shadow_color.a             = DEFAULT_TITLE_SHADOW_COLOR_A,
-    .background_mode                  = BACKGROUND_COLOR,
-    .background_color.r               = DEFAULT_BACKGROUND_COLOR_R,
-    .background_color.g               = DEFAULT_BACKGROUND_COLOR_G,
-    .background_color.b               = DEFAULT_BACKGROUND_COLOR_B,
-    .chroma_key_color.r               = DEFAULT_CHROMA_KEY_COLOR_R,
-    .chroma_key_color.g               = DEFAULT_CHROMA_KEY_COLOR_G,
-    .chroma_key_color.b               = DEFAULT_CHROMA_KEY_COLOR_B,
-    .chroma_key_color.a               = DEFAULT_CHROMA_KEY_COLOR_A,
-    .background_color.a               = 0xFF,
-    .background_overlay               = DEFAULT_BACKGROUND_OVERLAY,
-    .background_overlay_color.r       = DEFAULT_BACKGROUND_OVERLAY_COLOR_R,
-    .background_overlay_color.g       = DEFAULT_BACKGROUND_OVERLAY_COLOR_G,
-    .background_overlay_color.b       = DEFAULT_BACKGROUND_OVERLAY_COLOR_B,
-    .background_overlay_color.a       = DEFAULT_BACKGROUND_OVERLAY_COLOR_A,
-    .background_overlay_opacity[0]    = '\0',
-    .highlight                        = true,
-    .icon_size                        = DEFAULT_ICON_SIZE,
-    .highlight_fill_color.r           = DEFAULT_HIGHLIGHT_FILL_COLOR_R,
-    .highlight_fill_color.g           = DEFAULT_HIGHLIGHT_FILL_COLOR_G,
-    .highlight_fill_color.b           = DEFAULT_HIGHLIGHT_FILL_COLOR_B,
-    .highlight_fill_color.a           = DEFAULT_HIGHLIGHT_FILL_COLOR_A,
-    .highlight_outline_color.r        = DEFAULT_HIGHLIGHT_OUTLINE_COLOR_R,
-    .highlight_outline_color.g        = DEFAULT_HIGHLIGHT_OUTLINE_COLOR_G,
-    .highlight_outline_color.b        = DEFAULT_HIGHLIGHT_OUTLINE_COLOR_B,
-    .highlight_outline_color.a        = DEFAULT_HIGHLIGHT_OUTLINE_COLOR_A,
-    .highlight_outline_size           = DEFAULT_HIGHLIGHT_OUTLINE_SIZE,
-    .highlight_rx                     = DEFAULT_HIGHLIGHT_CORNER_RADIUS,
-    .title_padding                    = -1,
-    .max_buttons                      = DEFAULT_MAX_BUTTONS,
-    .icon_spacing                     = -1,
-    .highlight_vpadding               = -1,
-    .highlight_hpadding               = -1,
-    .title_opacity[0]                 = '\0',
-    .highlight_fill_opacity[0]        = '\0',
-    .highlight_outline_opacity[0]     = '\0',
-    .vcenter[0]             = '\0',
-    .icon_spacing_str[0]              = '\0',
-    .scroll_indicators                = DEFAULT_SCROLL_INDICATORS,
-    .scroll_indicator_fill_color.r    = DEFAULT_SCROLL_INDICATOR_FILL_COLOR_R,
-    .scroll_indicator_fill_color.g    = DEFAULT_SCROLL_INDICATOR_FILL_COLOR_G,
-    .scroll_indicator_fill_color.b    = DEFAULT_SCROLL_INDICATOR_FILL_COLOR_B,
-    .scroll_indicator_fill_color.a    = DEFAULT_SCROLL_INDICATOR_FILL_COLOR_A,
-    .scroll_indicator_outline_size    = DEFAULT_SCROLL_INDICATOR_OUTLINE_SIZE,
-    .scroll_indicator_outline_color.r = DEFAULT_SCROLL_INDICATOR_OUTLINE_COLOR_R,
-    .scroll_indicator_outline_color.g = DEFAULT_SCROLL_INDICATOR_OUTLINE_COLOR_G,
-    .scroll_indicator_outline_color.b = DEFAULT_SCROLL_INDICATOR_OUTLINE_COLOR_B,
-    .scroll_indicator_outline_color.a = DEFAULT_SCROLL_INDICATOR_OUTLINE_COLOR_A,
-    .scroll_indicator_opacity[0]      = '\0',
-    .title_oversize_mode              = OVERSIZE_TRUNCATE,
-    .wrap_entries                     = DEFAULT_WRAP_ENTRIES,
-    .reset_on_back                    = DEFAULT_RESET_ON_BACK,
-    .mouse_select                     = DEFAULT_MOUSE_SELECT,
-    .inhibit_os_screensaver           = DEFAULT_INHIBIT_OS_SCREENSAVER,
-    .startup_cmd                      = NULL,
-    .quit_cmd                         = NULL,
-    .screensaver_enabled              = false,
-    .screensaver_idle_time            = DEFAULT_SCREENSAVER_IDLE_TIME*1000,
-    .screensaver_intensity_str[0]     = '\0',
-    .screensaver_pause_slideshow      = DEFAULT_SCREENSAVER_PAUSE_SLIDESHOW,
-    .gamepad_enabled                  = DEFAULT_GAMEPAD_ENABLED,
-    .gamepad_device                   = DEFAULT_GAMEPAD_DEVICE,
-    .gamepad_mappings_file            = NULL,
-    .on_launch                        = ON_LAUNCH_BLANK,
-    .debug                            = false,
-    .exe_path                         = NULL,
-    .first_menu                       = NULL,
-    .num_menus                        = 0,
-    .clock_enabled                    = DEFAULT_CLOCK_ENABLED,
-    .clock_show_date                  = DEFAULT_CLOCK_SHOW_DATE,
-    .clock_alignment                  = DEFAULT_CLOCK_ALIGNMENT,
-    .clock_font_path                  = NULL,
-    .clock_margin_str[0]              = '\0',
-    .clock_margin                     = -1,
-    .clock_font_color.r               = DEFAULT_CLOCK_FONT_COLOR_R,
-    .clock_font_color.g               = DEFAULT_CLOCK_FONT_COLOR_G,
-    .clock_font_color.b               = DEFAULT_CLOCK_FONT_COLOR_B,
-    .clock_font_color.a               = DEFAULT_CLOCK_FONT_COLOR_A,
-    .clock_shadows                    = DEFAULT_CLOCK_SHADOWS,
-    .clock_shadow_color.r             = DEFAULT_CLOCK_SHADOW_COLOR_R,
-    .clock_shadow_color.g             = DEFAULT_CLOCK_SHADOW_COLOR_G,
-    .clock_shadow_color.b             = DEFAULT_CLOCK_SHADOW_COLOR_B,
-    .clock_shadow_color.a             = DEFAULT_CLOCK_SHADOW_COLOR_A,
-    .clock_opacity[0]                 = '\0',
-    .clock_font_size                  = DEFAULT_CLOCK_FONT_SIZE,
-    .clock_time_format                = DEFAULT_CLOCK_TIME_FORMAT,
-    .clock_date_format                = DEFAULT_CLOCK_DATE_FORMAT,
-    .clock_include_weekday            = DEFAULT_CLOCK_INCLUDE_WEEKDAY,
-    .slideshow_image_duration         = DEFAULT_SLIDESHOW_IMAGE_DURATION,
-    .slideshow_transition_time        = DEFAULT_SLIDESHOW_TRANSITION_TIME
-};
+Config config;
 
 // Initialize default states
 State state = { false };
@@ -1216,13 +1107,15 @@ int main(int argc, char *argv[])
 {
     int error;
     char *config_file_path = NULL;
+    memcpy(&config, &default_config, sizeof(Config));
     config.exe_path = SDL_GetBasePath();
 
     // Handle command line arguments, find config file
     handle_arguments(argc, argv, &config_file_path);
 
     // Parse config file for settings and menu entries
-    parse_config_file(config_file_path);
+    if (parse_config_file(config_file_path))
+        log_fatal("Could not load config file");
     free(config_file_path);
 
     // Get default menu

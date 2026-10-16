@@ -6,6 +6,14 @@
 #include <launcher_config.h>
 #include "settings_schema.h"
 #include "ini_doc.h"
+#include <string.h>
+#include <stdio.h>
+#include <ini.h>
+#include "util.h"
+
+extern Config config;
+extern Hotkey *hotkeys;
+extern GamepadControl *gamepad_controls;
 
 static void test_every_setting_macro_is_in_the_table_once(void)
 {
@@ -152,6 +160,67 @@ static void test_sections_cover_all_rows(void)
         CHECK_STR(out[i]->section, "Clock");
 }
 
+static void parse_text(const char *text)
+{
+    reset_config_parser();
+    ini_parse_string(text, config_handler, NULL);
+}
+
+// The parser must recognize every key in the table: some schema-valid value must change parser state
+static void test_parser_recognizes_every_schema_key(void)
+{
+    static const char *candidates[] = {
+        "true", "false", "#123456", "37%", "12", "1.5", "probe", ":left",
+        "Color", "Image", "Slideshow", "Transparent", "Blank", "None", "Quit", "Truncated",
+        "Shrink", "Left", "Right", "24hr", "12hr", "Auto", "Big", "Little", NULL
+    };
+    char err[256], text[512], number[16];
+    for (size_t i = 0; i < settings_schema_count; i++) {
+        const SettingDef *def = &settings_schema[i];
+        bool tried = false, recognized = false;
+        for (int c = -2; !recognized && (c < 0 || candidates[c] != NULL); c++) {
+            const char *value;
+            if (c < 0) {   // integer bounds first
+                snprintf(number, sizeof(number), "%d", c == -2 ? def->min : def->max);
+                value = number;
+            }
+            else
+                value = candidates[c];
+            if (!schema_validate(def, value, err, sizeof(err)))
+                continue;
+            tried = true;
+            memcpy(&config, &default_config, sizeof(Config));
+            hotkeys = NULL;
+            gamepad_controls = NULL;
+            snprintf(text, sizeof(text), "[%s]\n%s=%s\n", def->section, def->key, value);
+            parse_text(text);
+            recognized = memcmp(&config, &default_config, sizeof(Config)) != 0 || gamepad_controls != NULL;
+        }
+        if (!tried || !recognized)
+            fprintf(stderr, "  [%s] %s not recognized by config_handler\n", def->section, def->key);
+        CHECK(tried && recognized);
+    }
+}
+
+// Parsing twice must start fresh lists (the parser used to keep static "current" pointers)
+static void test_parser_state_resets_between_parses(void)
+{
+    for (int round = 0; round < 2; round++) {
+        memcpy(&config, &default_config, sizeof(Config));
+        hotkeys = NULL;
+        gamepad_controls = NULL;
+        parse_text("[Hotkeys]\nHotkey1=#1B;:quit\nHotkey2=#72;:reload\n"
+                   "[Gamepad]\nButtonA=:select\n"
+                   "[Main]\nEntry1=A;a.png;cmd\n");
+        size_t count = 0;
+        for (Hotkey *h = hotkeys; h != NULL; h = h->next)
+            count++;
+        CHECK(count == 2);
+        CHECK(gamepad_controls != NULL && gamepad_controls->next == NULL);
+        CHECK(config.num_menus == 1 && config.first_menu->num_entries == 1);
+    }
+}
+
 void suite_schema(void)
 {
     test_every_setting_macro_is_in_the_table_once();
@@ -160,4 +229,6 @@ void suite_schema(void)
     test_defaults_validate();
     test_validation_boundaries();
     test_sections_cover_all_rows();
+    test_parser_recognizes_every_schema_key();
+    test_parser_state_resets_between_parses();
 }

@@ -12,6 +12,7 @@ set(SOURCES
   clock.h
   settings_schema.c
   settings_schema.h
+  config_defaults.c
 )
 if (UNIX)
   add_executable(${EXECUTABLE_TITLE} ${SOURCES})

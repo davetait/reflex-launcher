@@ -5,6 +5,7 @@ set(TEST_SOURCES
   test_schema.c
   ${PROJECT_SOURCE_DIR}/src/ini_doc.c
   ${PROJECT_SOURCE_DIR}/src/settings_schema.c
+  ${PROJECT_SOURCE_DIR}/src/config_defaults.c
   ${PROJECT_SOURCE_DIR}/src/util.c
   ${PROJECT_SOURCE_DIR}/src/debug.c
 )
