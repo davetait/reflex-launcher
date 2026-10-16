@@ -6,6 +6,10 @@
 #include <sys/stat.h>
 #include "ini_doc.h"
 #include "platform/fileops.h"
+#ifdef PLATFORM_POSIX
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 typedef enum {
     LINE_BLANK,
@@ -60,6 +64,7 @@ static void set_line(IniDoc *doc, const char *section, const char *key, const ch
 static bool list_reads_back(const IniDoc *doc, const char *section, char *const *values, size_t count);
 static char *read_file_bytes(const char *path, size_t *length);
 static bool stat_file(const char *path, long long *size, long long *mtime);
+static FILE *open_for_write(const char *path, const struct stat *like);
 static int backup_file(const char *from, const char *to);
 
 static char *dup_range(const char *start, size_t length)
@@ -710,6 +715,32 @@ static bool stat_file(const char *path, long long *size, long long *mtime)
     return true;
 }
 
+// Opens `path` for writing. On POSIX, when `like` is given, the file gets like's permission
+// bits before anything is written, so saving a private config never leaves a readable copy.
+static FILE *open_for_write(const char *path, const struct stat *like)
+{
+#ifdef PLATFORM_POSIX
+    if (like != NULL) {
+        mode_t mode = (mode_t) (like->st_mode & 07777);
+        int fd = open(path, O_CREAT | O_WRONLY | O_TRUNC, mode);
+        if (fd < 0)
+            return NULL;
+        // open() applies the umask, and an existing file keeps its old mode
+        if (fchmod(fd, mode) != 0) {
+            close(fd);
+            return NULL;
+        }
+        FILE *file = fdopen(fd, "wb");
+        if (file == NULL)
+            close(fd);
+        return file;
+    }
+#else
+    (void) like;
+#endif
+    return fopen(path, "wb");
+}
+
 // Copies `from` to `to` if `from` exists. Returns 0 on success or when there is nothing to copy.
 static int backup_file(const char *from, const char *to)
 {
@@ -720,7 +751,7 @@ static int backup_file(const char *from, const char *to)
     char *bytes = read_file_bytes(from, &length);
     if (bytes == NULL)
         return -1;
-    FILE *file = fopen(to, "wb");
+    FILE *file = open_for_write(to, &st);
     if (file == NULL) {
         free(bytes);
         return -1;
@@ -752,7 +783,8 @@ int ini_doc_save(const IniDoc *doc, const char *path)
     snprintf(bak, n, "%s.bak", path);
 
     int status = -1;
-    FILE *file = fopen(tmp, "wb");
+    struct stat st;
+    FILE *file = open_for_write(tmp, stat(path, &st) == 0 ? &st : NULL);
     if (file != NULL) {
         size_t length = strlen(text);
         bool ok = fwrite(text, 1, length, file) == length;

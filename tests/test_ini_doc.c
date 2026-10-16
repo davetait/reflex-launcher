@@ -518,6 +518,26 @@ static void test_empty_key_and_bom_parity(void)
     check_parity(bom, "A", "k");
 }
 
+#ifdef PLATFORM_POSIX
+static void test_save_keeps_permissions(void)
+{
+    char path[512], bak[512];
+    test_tmp_path(path, sizeof(path), "private.ini");
+    snprintf(bak, sizeof(bak), "%s.bak", path);
+    remove(bak);
+    test_write_file(path, "[General]\nVSync=true\n");
+    chmod(path, 0600);
+
+    IniDoc *doc = ini_doc_load(path);
+    CHECK(ini_doc_set(doc, "General", "VSync", "false"));
+    CHECK(ini_doc_save(doc, path) == 0);
+    ini_doc_free(doc);
+
+    struct stat st;
+    CHECK(stat(path, &st) == 0 && (st.st_mode & 0777) == 0600);
+    CHECK(stat(bak, &st) == 0 && (st.st_mode & 0777) == 0600);
+}
+#endif
 
 static void test_load_save(void)
 {
@@ -588,4 +608,7 @@ void suite_ini_doc(void)
     test_section_names_validated();
     test_inih_round_trip_after_edits();
     test_empty_key_and_bom_parity();
+#ifdef PLATFORM_POSIX
+    test_save_keeps_permissions();
+#endif
 }
