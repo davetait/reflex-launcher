@@ -8,6 +8,7 @@ extern FILE *log_file;
 
 void suite_ini_doc(void);
 void suite_schema(void);
+void suite_config_io(void);
 
 static const struct {
     const char *name;
@@ -15,6 +16,7 @@ static const struct {
 } suites[] = {
     {"ini_doc", suite_ini_doc},
     {"schema", suite_schema},
+    {"config_io", suite_config_io},
 };
 
 void test_tmp_path(char *buf, size_t len, const char *name)

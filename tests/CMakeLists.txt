@@ -3,13 +3,15 @@ set(TEST_SOURCES
   test_stubs.c
   test_ini_doc.c
   test_schema.c
+  test_config_io.c
   ${PROJECT_SOURCE_DIR}/src/ini_doc.c
   ${PROJECT_SOURCE_DIR}/src/settings_schema.c
+  ${PROJECT_SOURCE_DIR}/src/config_io.c
   ${PROJECT_SOURCE_DIR}/src/config_defaults.c
   ${PROJECT_SOURCE_DIR}/src/util.c
   ${PROJECT_SOURCE_DIR}/src/debug.c
 )
-set(TEST_SUITES ini_doc schema)
+set(TEST_SUITES ini_doc schema config_io)
 
 # Every SETTING_* key from config_settings.cmake, for the schema coverage test
 get_cmake_property(ALL_VARIABLES VARIABLES)
