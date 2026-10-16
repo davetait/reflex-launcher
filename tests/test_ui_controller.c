@@ -214,6 +214,36 @@ static void test_text_cancel_and_keys(void)
     ui_free(&s);
 }
 
+static void test_text_cursor_keys(void)
+{
+    UiState s;
+    open_sample(&s);
+    focus(&s, "General", "StartupCmd");
+    ui_apply(&s, UI_SELECT);
+    CHECK(s.mode == MODE_TEXT);
+    if (s.text == NULL) {
+        ui_free(&s);
+        return;
+    }
+    ui_type(&s, "abc");
+    size_t row, col;
+    ui_apply(&s, UI_DOWN);
+    ui_apply(&s, UI_RIGHT);
+    text_input_focus(s.text, &row, &col);
+    CHECK(row == 1 && col == 1);
+    CHECK(ui_apply(&s, UI_CURSOR_LEFT) == UI_RESULT_NONE);
+    ui_apply(&s, UI_CURSOR_LEFT);
+    CHECK(text_input_cursor(s.text) == 1);
+    ui_apply(&s, UI_CURSOR_RIGHT);
+    CHECK(text_input_cursor(s.text) == 2);
+    size_t row2, col2;
+    text_input_focus(s.text, &row2, &col2);
+    CHECK(row2 == row && col2 == col);
+    ui_type(&s, "X");
+    CHECK_STR(text_input_value(s.text), "abXc");
+    ui_free(&s);
+}
+
 static void test_color_picker(void)
 {
     UiState s;
@@ -785,6 +815,7 @@ void suite_ui_controller(void)
     test_text_edit_done_and_invalid();
     test_text_cancel_and_keys();
     test_color_picker();
+    test_text_cursor_keys();
     test_reset();
     test_files_mode();
     test_save_success();

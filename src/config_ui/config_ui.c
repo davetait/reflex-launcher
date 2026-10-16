@@ -13,6 +13,7 @@
 #define STICK_INITIAL_DELAY 400
 #define STICK_REPEAT_PERIOD 80
 #define STICK_NONE -1
+#define DPAD_NONE -1
 
 extern Config config;
 extern Geometry geo;
@@ -24,12 +25,15 @@ static UiTextCache *text_cache = NULL;
 static bool text_input_started = false;
 static int stick_direction = STICK_NONE;
 static Uint32 stick_next_repeat = 0;
+static int dpad_direction = DPAD_NONE;  // the held D-pad move (a UiAction), repeated like the stick
+static Uint32 dpad_next_repeat = 0;
 
 static void apply(UiAction action);
 static void sync_text_input(void);
 static bool map_key(const SDL_KeyboardEvent *key, UiAction *action);
 static bool map_button(Uint8 button, UiAction *action);
 static int read_stick(void);
+static bool dpad_held(int direction);
 
 bool config_ui_is_open(void)
 {
@@ -59,6 +63,7 @@ void config_ui_open(void)
     text_input_started = false;
     stick_direction = STICK_NONE;
     stick_next_repeat = 0;
+    dpad_direction = DPAD_NONE;
     log_debug("Opened the Settings screen");
 }
 
@@ -100,6 +105,10 @@ void config_ui_handle_event(const SDL_Event *e)
         case SDL_CONTROLLERBUTTONDOWN:
             if (map_button(e->cbutton.button, &action)) {
                 ui.input_from_gamepad = true;
+                bool is_move = action == UI_UP || action == UI_DOWN || action == UI_LEFT || action == UI_RIGHT;
+                // The press itself moves once; config_ui_update repeats it while held
+                dpad_direction = is_move ? (int) action : DPAD_NONE;
+                dpad_next_repeat = SDL_GetTicks() + STICK_INITIAL_DELAY;
                 apply(action);
             }
             break;
@@ -127,6 +136,15 @@ void config_ui_update(Uint32 now)
         stick_next_repeat = now + STICK_REPEAT_PERIOD;
         ui.input_from_gamepad = true;
         apply((UiAction) direction);
+    }
+    if (!screen_open || dpad_direction == DPAD_NONE)
+        return;
+    if (!dpad_held(dpad_direction))
+        dpad_direction = DPAD_NONE;
+    else if ((Sint32) (now - dpad_next_repeat) >= 0) {
+        dpad_next_repeat = now + STICK_REPEAT_PERIOD;
+        ui.input_from_gamepad = true;
+        apply((UiAction) dpad_direction);
     }
 }
 
@@ -184,8 +202,9 @@ static bool map_key(const SDL_KeyboardEvent *key, UiAction *action)
     switch (sym) {
         case SDLK_UP: *action = UI_UP; return true;
         case SDLK_DOWN: *action = UI_DOWN; return true;
-        case SDLK_LEFT: *action = UI_LEFT; return true;
-        case SDLK_RIGHT: *action = UI_RIGHT; return true;
+        // In text entry the arrows move the text cursor; Up/Down still move key focus
+        case SDLK_LEFT: *action = text_mode ? UI_CURSOR_LEFT : UI_LEFT; return true;
+        case SDLK_RIGHT: *action = text_mode ? UI_CURSOR_RIGHT : UI_RIGHT; return true;
         case SDLK_BACKSPACE:
             if (text_mode) {
                 *action = UI_ERASE;
@@ -238,6 +257,26 @@ static bool map_button(Uint8 button, UiAction *action)
         case SDL_CONTROLLER_BUTTON_START: *action = UI_SAVE; return true;
         default: return false;
     }
+}
+
+// True if the D-pad button for a move is down on any open gamepad. Polled, like the stick,
+// so an unplugged gamepad can't leave a direction repeating.
+static bool dpad_held(int direction)
+{
+    SDL_GameControllerButton button;
+    switch (direction) {
+        case UI_UP: button = SDL_CONTROLLER_BUTTON_DPAD_UP; break;
+        case UI_DOWN: button = SDL_CONTROLLER_BUTTON_DPAD_DOWN; break;
+        case UI_LEFT: button = SDL_CONTROLLER_BUTTON_DPAD_LEFT; break;
+        case UI_RIGHT: button = SDL_CONTROLLER_BUTTON_DPAD_RIGHT; break;
+        default: return false;
+    }
+    for (int i = 0; i < SDL_NumJoysticks(); i++) {
+        SDL_GameController *pad = SDL_GameControllerFromInstanceID(SDL_JoystickGetDeviceInstanceID(i));
+        if (pad != NULL && SDL_GameControllerGetButton(pad, button))
+            return true;
+    }
+    return false;
 }
 
 // The left stick direction (a UiAction move) across the open gamepads, or STICK_NONE.

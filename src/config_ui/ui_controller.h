@@ -8,7 +8,9 @@
 
 // Display-free controller for the Settings screen: modes, focus and actions.
 
-typedef enum { UI_UP, UI_DOWN, UI_LEFT, UI_RIGHT, UI_SELECT, UI_BACK, UI_RESET, UI_SAVE, UI_ERASE, UI_ACCEPT } UiAction;
+// UI_CURSOR_LEFT/RIGHT move the text cursor (keyboard arrows in text entry)
+typedef enum { UI_UP, UI_DOWN, UI_LEFT, UI_RIGHT, UI_SELECT, UI_BACK, UI_RESET, UI_SAVE, UI_ERASE, UI_ACCEPT,
+               UI_CURSOR_LEFT, UI_CURSOR_RIGHT } UiAction;
 typedef enum { UI_RESULT_NONE, UI_RESULT_CLOSE, UI_RESULT_SAVED } UiResult;
 typedef enum { MODE_SECTIONS, MODE_ROWS, MODE_CHOICE_LIST, MODE_TEXT, MODE_FILES, MODE_COLOR,
                MODE_CONFIRM_EXIT, MODE_CONFIRM_OVERWRITE, MODE_CONFIRM_RISK, MODE_CONFIRM_COPY,

@@ -14,7 +14,7 @@ void config_ui_open(void);
 void config_ui_close(void);
 // Maps and applies one input event. A save closes the screen and requests a reload.
 void config_ui_handle_event(const SDL_Event *e);
-// Left-stick movement with repeat (400 ms initial delay, then every 80 ms)
+// Left-stick movement and held D-pad repeat (400 ms initial delay, then every 80 ms)
 void config_ui_update(Uint32 now);
 // Draws the screen over the current frame
 void config_ui_draw(void);

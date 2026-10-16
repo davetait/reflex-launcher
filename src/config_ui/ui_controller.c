@@ -620,6 +620,12 @@ static UiResult apply_text(UiState *s, UiAction a)
         case UI_ERASE:
             text_input_erase(s->text);
             break;
+        case UI_CURSOR_LEFT:
+            text_input_move_cursor(s->text, -1);
+            break;
+        case UI_CURSOR_RIGHT:
+            text_input_move_cursor(s->text, 1);
+            break;
         case UI_BACK:
             leave_to_rows(s);
             break;

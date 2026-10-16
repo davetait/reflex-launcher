@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include "text_input.h"
 
 // Labels are UTF-8; written as escapes so the file is encoding-independent.
@@ -26,6 +27,7 @@ struct text_input {
     PageId page;
     size_t row;
     size_t col;
+    bool replace;   // the next typed character replaces the prefilled value (number layout)
 };
 
 #define ROW(array) {array, sizeof(array) / sizeof((array)[0])}
@@ -63,7 +65,8 @@ static const Page *current_page(const TextInput *t);
 static size_t char_length(unsigned char lead);
 static size_t prev_char_start(const char *s, size_t pos);
 static void insert_text(TextInput *t, const char *utf8);
-static void switch_page(TextInput *t, PageId page);
+static void type_text(TextInput *t, const char *utf8);
+static void switch_page(TextInput *t, PageId page, const char *focus_label);
 
 TextInput *text_input_new(const char *initial, TextLayout layout)
 {
@@ -73,6 +76,7 @@ TextInput *text_input_new(const char *initial, TextLayout layout)
     t->page = layout == LAYOUT_NUMBER ? PAGE_NUMBER : PAGE_LOWER;
     if (initial != NULL)
         insert_text(t, initial);
+    t->replace = layout == LAYOUT_NUMBER && t->length > 0;
     return t;
 }
 
@@ -124,13 +128,13 @@ TextResult text_input_press(TextInput *t)
     else if (strcmp(label, KEY_RIGHT) == 0)
         text_input_move_cursor(t, 1);
     else if (strcmp(label, "Shift") == 0)
-        switch_page(t, PAGE_UPPER);
+        switch_page(t, PAGE_UPPER, "Shift");
     else if (strcmp(label, "#+=") == 0)
-        switch_page(t, PAGE_SYMBOLS);
+        switch_page(t, PAGE_SYMBOLS, "abc");
     else if (strcmp(label, "abc") == 0)
-        switch_page(t, PAGE_LOWER);
+        switch_page(t, PAGE_LOWER, "#+=");
     else {
-        insert_text(t, strcmp(label, "Space") == 0 ? " " : label);
+        type_text(t, strcmp(label, "Space") == 0 ? " " : label);
         if (t->page == PAGE_UPPER)
             t->page = PAGE_LOWER;   // Shift applies to one character; focus stays put
     }
@@ -140,11 +144,12 @@ TextResult text_input_press(TextInput *t)
 void text_input_type(TextInput *t, const char *utf8)
 {
     if (utf8 != NULL)
-        insert_text(t, utf8);
+        type_text(t, utf8);
 }
 
 void text_input_erase(TextInput *t)
 {
+    t->replace = false;
     if (t->cursor == 0)
         return;
     size_t start = prev_char_start(t->value, t->cursor);
@@ -155,6 +160,7 @@ void text_input_erase(TextInput *t)
 
 void text_input_move_cursor(TextInput *t, int delta)
 {
+    t->replace = false;
     while (delta < 0 && t->cursor > 0) {
         t->cursor = prev_char_start(t->value, t->cursor);
         delta++;
@@ -235,9 +241,32 @@ static void insert_text(TextInput *t, const char *utf8)
     }
 }
 
-static void switch_page(TextInput *t, PageId page)
+// Typing or pressing a character key; the first one replaces a prefilled number
+static void type_text(TextInput *t, const char *utf8)
+{
+    if (t->replace && *utf8 != '\0') {
+        t->value[0] = '\0';
+        t->length = 0;
+        t->cursor = 0;
+    }
+    t->replace = false;
+    insert_text(t, utf8);
+}
+
+// Shows another page with focus on its bottom (special) row: on `focus_label` if the row
+// has it (so the key that switches back is under the cursor), else the same column, clamped
+static void switch_page(TextInput *t, PageId page, const char *focus_label)
 {
     t->page = page;
-    t->row = 0;
-    t->col = 0;
+    const Page *p = current_page(t);
+    t->row = p->row_count - 1;
+    const KeyRow *special = &p->rows[t->row];
+    for (size_t i = 0; i < special->length; i++) {
+        if (strcmp(special->keys[i], focus_label) == 0) {
+            t->col = i;
+            return;
+        }
+    }
+    if (t->col >= special->length)
+        t->col = special->length - 1;
 }

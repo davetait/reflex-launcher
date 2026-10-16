@@ -49,7 +49,8 @@ static void test_shift_one_shot(void)
     text_input_move_focus(t, 0, 4);
     CHECK_STR(text_input_key_label(t, 4, 0), "Shift");
     text_input_press(t);
-    text_input_move_focus(t, 0, 1);   // focus reset to (0,0) on page switch
+    CHECK_STR(text_input_key_label(t, 4, 0), "Shift");
+    focus_label(t, "Q");
     text_input_press(t);
     CHECK_STR(text_input_value(t), "Q");
     text_input_press(t);
@@ -77,6 +78,68 @@ static void test_symbols_page(void)
     focus_label(t, "abc");
     text_input_press(t);
     CHECK_STR(text_input_key_label(t, 1, 0), "q");
+    text_input_free(t);
+}
+
+static const char *focused_label(const TextInput *t)
+{
+    size_t row, col;
+    text_input_focus(t, &row, &col);
+    return text_input_key_label(t, row, col);
+}
+
+static void test_page_switch_keeps_focus(void)
+{
+    TextInput *t = text_input_new("", LAYOUT_TEXT);
+    focus_label(t, "Shift");
+    text_input_press(t);
+    CHECK_STR(focused_label(t), "Shift");
+    focus_label(t, "#+=");
+    text_input_press(t);
+    CHECK_STR(focused_label(t), "abc");
+    text_input_press(t);
+    CHECK_STR(focused_label(t), "#+=");
+    text_input_press(t);
+    CHECK_STR(focused_label(t), "abc");
+    text_input_free(t);
+}
+
+static void test_number_first_key_replaces(void)
+{
+    TextInput *t = text_input_new("256", LAYOUT_NUMBER);
+    CHECK_STR(focused_label(t), "7");
+    text_input_press(t);
+    CHECK_STR(text_input_value(t), "7");
+    text_input_type(t, "5");
+    CHECK_STR(text_input_value(t), "75");
+    text_input_free(t);
+
+    t = text_input_new("256", LAYOUT_NUMBER);
+    text_input_type(t, "12");
+    CHECK_STR(text_input_value(t), "12");
+    text_input_free(t);
+
+    // Erasing or moving the cursor first edits the value instead
+    t = text_input_new("256", LAYOUT_NUMBER);
+    text_input_erase(t);
+    text_input_type(t, "1");
+    CHECK_STR(text_input_value(t), "251");
+    text_input_free(t);
+    t = text_input_new("256", LAYOUT_NUMBER);
+    text_input_move_cursor(t, -1);
+    text_input_type(t, "9");
+    CHECK_STR(text_input_value(t), "2596");
+    text_input_free(t);
+
+    // Moving key focus doesn't count, and text layouts never replace
+    t = text_input_new("256", LAYOUT_NUMBER);
+    text_input_move_focus(t, 1, 0);
+    text_input_press(t);
+    CHECK_STR(text_input_value(t), "8");
+    text_input_free(t);
+    t = text_input_new("abc", LAYOUT_TEXT);
+    text_input_type(t, "d");
+    CHECK_STR(text_input_value(t), "abcd");
     text_input_free(t);
 }
 
@@ -155,4 +218,6 @@ void suite_text_input(void)
     test_utf8_erase_and_cursor();
     test_max_length();
     test_focus_clamps_between_rows();
+    test_page_switch_keeps_focus();
+    test_number_first_key_replaces();
 }
