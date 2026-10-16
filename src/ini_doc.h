@@ -15,6 +15,8 @@ int ini_doc_save(const IniDoc *doc, const char *path);
 void ini_doc_free(IniDoc *doc);
 
 const char *ini_doc_get(const IniDoc *doc, const char *section, const char *key);
+// ini_doc_set and ini_doc_set_list return false, leaving the doc unchanged, when inih
+// wouldn't read the result back as written (see the *_is_representable checks)
 bool ini_doc_set(IniDoc *doc, const char *section, const char *key, const char *value);
 void ini_doc_unset(IniDoc *doc, const char *section, const char *key);
 bool ini_doc_value_is_representable(const char *value);
@@ -25,9 +27,14 @@ bool ini_doc_set_list(IniDoc *doc, const char *section, const char *prefix,
 
 size_t ini_doc_sections(const IniDoc *doc, const char ***names);
 bool ini_doc_has_section(const IniDoc *doc, const char *section);
-void ini_doc_add_section(IniDoc *doc, const char *section);
+// False for names inih can't read back from "[name]": empty, leading/trailing whitespace,
+// a newline, ']', or " ;" (an inline comment)
+bool ini_doc_section_is_representable(const char *name);
+// Returns false (doc unchanged) if the name isn't representable; true if it already exists
+bool ini_doc_add_section(IniDoc *doc, const char *section);
 void ini_doc_remove_section(IniDoc *doc, const char *section);
-void ini_doc_rename_section(IniDoc *doc, const char *from, const char *to);
+// Returns false (doc unchanged) if `to` isn't representable or names another existing section
+bool ini_doc_rename_section(IniDoc *doc, const char *from, const char *to);
 
 size_t ini_doc_dirty_count(const IniDoc *doc);
 void ini_doc_dirty_get(const IniDoc *doc, size_t index, const char **section, const char **key);

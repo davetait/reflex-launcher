@@ -345,6 +345,180 @@ static void test_set_list_spread_and_zero(void)
     ini_doc_free(doc);
 }
 
+static void test_section_ops_with_doc_pointers(void)
+{
+    // Names returned by ini_doc_sections point into the doc; removing or renaming
+    // with them must not read freed memory
+    IniDoc *doc = ini_doc_parse("[General]\nX=1\n[Main]\nEntry1=a;b;c\n[System]\nEntry1=s;s;s\n[Main]\nEntry2=d;e;f\n");
+    const char **names = NULL;
+    size_t n = ini_doc_sections(doc, &names);
+    CHECK(n == 3);
+    ini_doc_remove_section(doc, names[1]);   // "Main", owned by its first header
+    free(names);
+    CHECK(!ini_doc_has_section(doc, "Main"));
+    char *out = ini_doc_serialize(doc);
+    CHECK_STR(out, "[General]\nX=1\n[System]\nEntry1=s;s;s\n");
+    free(out);
+
+    n = ini_doc_sections(doc, &names);
+    CHECK(n == 2);
+    CHECK(ini_doc_rename_section(doc, names[1], names[1]));   // self-rename is a no-op
+    free(names);
+    out = ini_doc_serialize(doc);
+    CHECK_STR(out, "[General]\nX=1\n[System]\nEntry1=s;s;s\n");
+    free(out);
+
+    n = ini_doc_sections(doc, &names);
+    CHECK(ini_doc_rename_section(doc, names[1], "Power"));
+    free(names);
+    out = ini_doc_serialize(doc);
+    CHECK_STR(out, "[General]\nX=1\n[Power]\nEntry1=s;s;s\n");
+    free(out);
+    ini_doc_free(doc);
+}
+
+static void check_unchanged(IniDoc *doc, const char *expected)
+{
+    char *out = ini_doc_serialize(doc);
+    CHECK_STR(out, expected);
+    free(out);
+    CHECK(ini_doc_dirty_count(doc) == 0);
+}
+
+static void test_section_names_validated(void)
+{
+    const char *base = "[General]\nX=1\n[Main]\nEntry1=a;b;c\n";
+    const char *bad[] = {"a]b", "a\nb", "a\rb", "a ;b", " a", "a ", "", "a\n[General]"};
+    const char *list[] = {"T;i;c"};
+    IniDoc *doc = ini_doc_parse(base);
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+        CHECK(!ini_doc_section_is_representable(bad[i]));
+        CHECK(!ini_doc_add_section(doc, bad[i]));
+        CHECK(!ini_doc_rename_section(doc, "Main", bad[i]));
+        CHECK(!ini_doc_set(doc, bad[i], "k", "v"));
+        CHECK(!ini_doc_set_list(doc, bad[i], "Entry", list, 1));
+        check_unchanged(doc, base);
+    }
+    CHECK(ini_doc_section_is_representable("Main Menu"));
+    CHECK(ini_doc_section_is_representable("a;b"));   // ';' without a space before it is kept
+    CHECK(!ini_doc_rename_section(doc, "Main", "General"));   // would merge into another section
+    check_unchanged(doc, base);
+    CHECK(ini_doc_add_section(doc, "Main"));                  // already there: nothing to do
+    check_unchanged(doc, base);
+    CHECK(ini_doc_add_section(doc, "Games"));
+    CHECK(ini_doc_has_section(doc, "Games"));
+    ini_doc_free(doc);
+}
+
+typedef struct {
+    const char *section;
+    char values[8][256];
+    size_t count;
+} SectionValues;
+
+// inih handler that collects every value reported in one section, in order
+static int section_values_handler(void *user, const char *section, const char *name, const char *value)
+{
+    SectionValues *sv = user;
+    (void) name;
+    if (strcmp(section, sv->section) == 0 && sv->count < 8)
+        snprintf(sv->values[sv->count++], sizeof(sv->values[0]), "%s", value);
+    return 1;
+}
+
+// What inih reads for section/key from the doc as it would be saved
+static void check_inih_reads(const IniDoc *doc, const char *section, const char *key, const char *expected)
+{
+    char *text = ini_doc_serialize(doc);
+    LastValue lv = { section, key, "", 0 };
+    ini_parse_string(text, last_value_handler, &lv);
+    CHECK_STR(lv.found ? lv.value : NULL, expected);
+    CHECK_STR(ini_doc_get(doc, section, key), expected);
+    free(text);
+}
+
+static void check_inih_list(const IniDoc *doc, const char *section, const char *const *expected, size_t n)
+{
+    char *text = ini_doc_serialize(doc);
+    SectionValues sv = { section, {{0}}, 0 };
+    ini_parse_string(text, section_values_handler, &sv);
+    CHECK(sv.count == n);
+    for (size_t i = 0; i < n && i < sv.count; i++)
+        CHECK_STR(sv.values[i], expected[i]);
+    free(text);
+    check_list((IniDoc *) doc, section, expected, n);
+}
+
+static void test_inih_round_trip_after_edits(void)
+{
+    // appending a key to a section whose only line is an indented non-key line
+    IniDoc *doc = ini_doc_parse("[A]\nk=1\n[B]\n  orphan\n");
+    CHECK(ini_doc_set(doc, "B", "x", "v"));
+    check_inih_reads(doc, "B", "x", "v");
+    check_inih_reads(doc, "A", "k", "1");
+    ini_doc_free(doc);
+
+    // un-commenting a key that sits between a key and its continuation line
+    const char *between = "[A]\na=1\n#k=old\n  more\n";
+    doc = ini_doc_parse(between);
+    bool ok = ini_doc_set(doc, "A", "k", "new");
+    if (ok) {
+        check_inih_reads(doc, "A", "k", "new");
+        check_inih_reads(doc, "A", "a", "more");
+    }
+    else {
+        check_unchanged(doc, between);
+    }
+    ini_doc_free(doc);
+
+    // replacing a key whose continuation is separated by a blank line
+    doc = ini_doc_parse("[A]\nk=one\n\n  two\nz=1\n");
+    CHECK(ini_doc_set(doc, "A", "k", "new"));
+    check_inih_reads(doc, "A", "k", "new");
+    check_inih_reads(doc, "A", "z", "1");
+    ini_doc_free(doc);
+
+    // unsetting it must not leave the continuation behind for inih or for another key
+    doc = ini_doc_parse("[A]\na=1\nk=one\n\n  two\n");
+    ini_doc_unset(doc, "A", "k");
+    check_inih_reads(doc, "A", "k", NULL);
+    check_inih_reads(doc, "A", "a", "1");
+    ini_doc_free(doc);
+
+    // writing a list into a section with an indented non-key line
+    doc = ini_doc_parse("[Main]\n  orphan\n");
+    const char *list[] = {"X;x;x", "Y;y;y"};
+    CHECK(ini_doc_set_list(doc, "Main", "Entry", list, 2));
+    check_inih_list(doc, "Main", list, 2);
+    ini_doc_free(doc);
+
+    // a list whose continuation is separated by a blank line
+    doc = ini_doc_parse("[Main]\nEntry1=A;a;a\n\n  B;b;b\n[Other]\nEntry1=O;o;o\n");
+    const char *one[] = {"C;c;c"};
+    CHECK(ini_doc_set_list(doc, "Main", "Entry", one, 1));
+    check_inih_list(doc, "Main", one, 1);
+    ini_doc_free(doc);
+
+    // keys that inih would read differently are refused and leave the doc unchanged
+    doc = ini_doc_parse("[A]\nk=1\n");
+    CHECK(!ini_doc_set(doc, "A", "x\ny", "v"));
+    CHECK(!ini_doc_set(doc, "A", "a=b", "v"));
+    CHECK(!ini_doc_set(doc, "A", "#x", "v"));
+    check_unchanged(doc, "[A]\nk=1\n");
+    ini_doc_free(doc);
+}
+
+static void test_empty_key_and_bom_parity(void)
+{
+    // inih never starts a continuation after an empty key ("=v")
+    const char *empty_key = "[A]\n=v\n  x=1\n";
+    check_parity(empty_key, "A", "");
+    check_parity(empty_key, "A", "x");
+    const char *bom = "\xEF\xBB\xBF[A]\nk=v\n  w\n";
+    check_parity(bom, "A", "k");
+}
+
+
 static void test_load_save(void)
 {
     char dir[512], path[512], bak[512], tmp[512];
@@ -410,4 +584,8 @@ void suite_ini_doc(void)
     test_load_save();
     test_set_list_reorder_aliasing();
     test_set_list_spread_and_zero();
+    test_section_ops_with_doc_pointers();
+    test_section_names_validated();
+    test_inih_round_trip_after_edits();
+    test_empty_key_and_bom_parity();
 }

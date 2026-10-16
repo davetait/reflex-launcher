@@ -53,7 +53,12 @@ static void make_key_line(IniLine *line, const char *key, const char *value);
 static size_t section_insert_point(IniDoc *doc, const char *section);
 static void mark_dirty(IniDoc *doc, const char *section, const char *key);
 static bool is_list_line(const IniLine *line, const char *section);
-static char *read_file_bytes(const char *path);
+static void replace_lines(IniDoc *doc, const char *text);
+static void reclassify(IniDoc *doc);
+static void restore(IniDoc *doc, const char *text, size_t dirty_count);
+static void set_line(IniDoc *doc, const char *section, const char *key, const char *value);
+static bool list_reads_back(const IniDoc *doc, const char *section, char *const *values, size_t count);
+static char *read_file_bytes(const char *path, size_t *length);
 static bool stat_file(const char *path, long long *size, long long *mtime);
 static int backup_file(const char *from, const char *to);
 
@@ -122,7 +127,7 @@ static IniLine classify_line(const char *raw, const char *section, const char *p
         line.kind = LINE_BLANK;
     else if (*body == ';' || *body == '#')
         line.kind = parse_commented_key(body + 1, &line.key, &line.value) ? LINE_COMMENTED_KEY : LINE_COMMENT;
-    else if (prev_key != NULL && start > raw) {
+    else if (prev_key != NULL && *prev_key && start > raw) {
         line.kind = LINE_CONTINUATION;
         line.key = strdup(prev_key);
         line.value = trimmed(body, find_chars_or_comment(body, NULL));
@@ -276,21 +281,56 @@ static void make_key_line(IniLine *line, const char *key, const char *value)
     line->kind = LINE_KEY;
 }
 
-// Index just after the last setting or header of `section`; creates the section if missing
+// Index just after the last setting, header, or unparsable line of `section`; creates the
+// section if missing. Unparsable lines count so a new key never lands before an indented
+// one, which inih would read as the new key's continuation.
 static size_t section_insert_point(IniDoc *doc, const char *section)
 {
     size_t last = (size_t) -1;
     for (size_t i = 0; i < doc->count; i++) {
         const IniLine *line = &doc->lines[i];
         if (strcmp(line->section, section) == 0 &&
-        (line->kind == LINE_SECTION || line->kind == LINE_KEY ||
-        line->kind == LINE_COMMENTED_KEY || line->kind == LINE_CONTINUATION))
+        (line->kind == LINE_SECTION || line->kind == LINE_KEY || line->kind == LINE_COMMENTED_KEY ||
+        line->kind == LINE_CONTINUATION || line->kind == LINE_OTHER))
             last = i;
     }
     if (last != (size_t) -1)
         return last + 1;
     ini_doc_add_section(doc, section);
     return doc->count;
+}
+
+// Rebuild the line list from `text`, keeping the doc's format flags, file stat, and dirty list
+static void replace_lines(IniDoc *doc, const char *text)
+{
+    IniDoc *parsed = ini_doc_parse(text);
+    for (size_t i = 0; i < doc->count; i++)
+        free_line(&doc->lines[i]);
+    free(doc->lines);
+    doc->lines = parsed->lines;
+    doc->count = parsed->count;
+    doc->capacity = parsed->capacity;
+    free(parsed);
+}
+
+// Re-run inih's rules over the edited lines, so every line's kind, section, key, and value
+// reflect what inih will read (an edit can change how neighbouring lines are read)
+static void reclassify(IniDoc *doc)
+{
+    char *text = ini_doc_serialize(doc);
+    replace_lines(doc, text);
+    free(text);
+}
+
+// Undo an edit: go back to the serialized `text` and drop dirty entries added since
+static void restore(IniDoc *doc, const char *text, size_t dirty_count)
+{
+    replace_lines(doc, text);
+    while (doc->dirty_count > dirty_count) {
+        doc->dirty_count--;
+        free(doc->dirty_sections[doc->dirty_count]);
+        free(doc->dirty_keys[doc->dirty_count]);
+    }
 }
 
 static void mark_dirty(IniDoc *doc, const char *section, const char *key)
@@ -317,20 +357,34 @@ bool ini_doc_value_is_representable(const char *value)
     return *find_chars_or_comment(value, NULL) == '\0';
 }
 
-bool ini_doc_set(IniDoc *doc, const char *section, const char *key, const char *value)
+// True if inih would read `name` back unchanged from a "[name]" header
+bool ini_doc_section_is_representable(const char *name)
 {
-    if (!ini_doc_value_is_representable(value))
+    size_t n = strlen(name);
+    if (n == 0 || strpbrk(name, "\r\n]") != NULL)
         return false;
+    if (isspace((unsigned char) name[0]) || isspace((unsigned char) name[n - 1]))
+        return false;
+    return *find_chars_or_comment(name, "]") == '\0';
+}
 
-    // Replace the last active instance (and drop its continuation lines)
+// The edit behind ini_doc_set(), without validation
+static void set_line(IniDoc *doc, const char *section, const char *key, const char *value)
+{
+    // Replace the last active instance (and drop its continuation lines, which run
+    // until the next key or header, across blank lines and comments)
     for (size_t i = doc->count; i-- > 0;) {
         IniLine *line = &doc->lines[i];
         if (line->kind == LINE_KEY && line_matches(line, section, key)) {
             make_key_line(line, key, value);
-            while (i + 1 < doc->count && doc->lines[i + 1].kind == LINE_CONTINUATION)
-                delete_line(doc, i + 1);
+            for (size_t j = i + 1; j < doc->count && doc->lines[j].kind != LINE_KEY && doc->lines[j].kind != LINE_SECTION;) {
+                if (doc->lines[j].kind == LINE_CONTINUATION)
+                    delete_line(doc, j);
+                else
+                    j++;
+            }
             mark_dirty(doc, section, key);
-            return true;
+            return;
         }
     }
 
@@ -340,7 +394,7 @@ bool ini_doc_set(IniDoc *doc, const char *section, const char *key, const char *
         if (line->kind == LINE_COMMENTED_KEY && line_matches(line, section, key)) {
             make_key_line(line, key, value);
             mark_dirty(doc, section, key);
-            return true;
+            return;
         }
     }
 
@@ -350,7 +404,34 @@ bool ini_doc_set(IniDoc *doc, const char *section, const char *key, const char *
     insert_line(doc, at, line);
     make_key_line(&doc->lines[at], key, value);
     mark_dirty(doc, section, key);
-    return true;
+}
+
+bool ini_doc_set(IniDoc *doc, const char *section, const char *key, const char *value)
+{
+    if (!ini_doc_value_is_representable(value) || !ini_doc_section_is_representable(section))
+        return false;
+
+    // Copy the arguments: they may point into the doc, which reclassify() rebuilds
+    char *section_copy = strdup(section);
+    char *key_copy = strdup(key);
+    char *value_copy = strdup(value);
+    char *before = ini_doc_serialize(doc);
+    size_t dirty_before = doc->dirty_count;
+
+    set_line(doc, section_copy, key_copy, value_copy);
+    reclassify(doc);
+
+    // Refuse edits inih would read differently (e.g. a key containing '=' or a newline,
+    // or a line that turns a following indented line into a continuation)
+    const char *now = ini_doc_get(doc, section_copy, key_copy);
+    bool ok = now != NULL && strcmp(now, value_copy) == 0;
+    if (!ok)
+        restore(doc, before, dirty_before);
+    free(before);
+    free(section_copy);
+    free(key_copy);
+    free(value_copy);
+    return ok;
 }
 
 void ini_doc_unset(IniDoc *doc, const char *section, const char *key)
@@ -364,9 +445,11 @@ void ini_doc_unset(IniDoc *doc, const char *section, const char *key)
             free(line->text);
             line->text = text;
             line->kind = LINE_COMMENTED_KEY;
-            // Also comment out continuation lines that follow this key
-            for (size_t j = i + 1; j < doc->count && doc->lines[j].kind == LINE_CONTINUATION; j++) {
+            // Also comment out its continuation lines, which run until the next key or header
+            for (size_t j = i + 1; j < doc->count && doc->lines[j].kind != LINE_KEY && doc->lines[j].kind != LINE_SECTION; j++) {
                 IniLine *cont = &doc->lines[j];
+                if (cont->kind != LINE_CONTINUATION)
+                    continue;
                 size_t cont_n = strlen(cont->text) + 2;
                 char *cont_text = malloc(cont_n);
                 snprintf(cont_text, cont_n, "#%s", cont->text);
@@ -377,6 +460,7 @@ void ini_doc_unset(IniDoc *doc, const char *section, const char *key)
             mark_dirty(doc, section, key);
         }
     }
+    reclassify(doc);
 }
 
 size_t ini_doc_dirty_count(const IniDoc *doc)
@@ -399,10 +483,12 @@ bool ini_doc_has_section(const IniDoc *doc, const char *section)
     return false;
 }
 
-void ini_doc_add_section(IniDoc *doc, const char *section)
+bool ini_doc_add_section(IniDoc *doc, const char *section)
 {
+    if (!ini_doc_section_is_representable(section))
+        return false;
     if (ini_doc_has_section(doc, section))
-        return;
+        return true;
     if (doc->count > 0 && doc->lines[doc->count - 1].kind != LINE_BLANK) {
         IniLine blank = {
             .kind = LINE_BLANK,
@@ -417,6 +503,8 @@ void ini_doc_add_section(IniDoc *doc, const char *section)
     IniLine header = { .kind = LINE_SECTION, .text = text, .section = strdup(section) };
     insert_line(doc, doc->count, header);
     doc->trailing_newline = true;
+    reclassify(doc);
+    return true;
 }
 
 void ini_doc_free(IniDoc *doc)
@@ -451,19 +539,39 @@ size_t ini_doc_get_list(const IniDoc *doc, const char *section, const char ***va
     return count;
 }
 
+// True if the section's list is exactly `values`
+static bool list_reads_back(const IniDoc *doc, const char *section, char *const *values, size_t count)
+{
+    const char **now = NULL;
+    size_t now_count = ini_doc_get_list(doc, section, &now);
+    bool same = now_count == count;
+    for (size_t i = 0; same && i < count; i++)
+        same = strcmp(now[i], values[i]) == 0;
+    free(now);
+    return same;
+}
+
 bool ini_doc_set_list(IniDoc *doc, const char *section, const char *prefix,
                       const char *const *values, size_t count)
 {
+    if (!ini_doc_section_is_representable(section))
+        return false;
     for (size_t i = 0; i < count; i++) {
         if (!ini_doc_value_is_representable(values[i]))
             return false;
     }
 
-    // Copy all values to avoid aliasing issues when values point into the doc
-    // (e.g., caller passes results from ini_doc_get_list)
-    char **values_copy = malloc(count * sizeof(char*));
+    // Copy the arguments to avoid aliasing issues when they point into the doc
+    // (e.g., caller passes results from ini_doc_get_list or ini_doc_sections)
+    char *section_copy = strdup(section);
+    char *prefix_copy = strdup(prefix);
+    section = section_copy;
+    prefix = prefix_copy;
+    char **values_copy = malloc((count + 1) * sizeof(char*));
     for (size_t i = 0; i < count; i++)
         values_copy[i] = strdup(values[i]);
+    char *before = ini_doc_serialize(doc);
+    size_t dirty_before = doc->dirty_count;
 
     size_t *existing = malloc((doc->count + 1) * sizeof(size_t));
     size_t existing_count = 0;
@@ -493,11 +601,19 @@ bool ini_doc_set_list(IniDoc *doc, const char *section, const char *prefix,
         at++;
     }
     free(existing);
+    mark_dirty(doc, section, prefix);
+    reclassify(doc);
+
+    bool ok = list_reads_back(doc, section, values_copy, count);
+    if (!ok)
+        restore(doc, before, dirty_before);
+    free(before);
     for (size_t i = 0; i < count; i++)
         free(values_copy[i]);
     free(values_copy);
-    mark_dirty(doc, section, prefix);
-    return true;
+    free(section_copy);
+    free(prefix_copy);
+    return ok;
 }
 
 size_t ini_doc_sections(const IniDoc *doc, const char ***names)
@@ -518,32 +634,48 @@ size_t ini_doc_sections(const IniDoc *doc, const char ***names)
 
 void ini_doc_remove_section(IniDoc *doc, const char *section)
 {
+    char *section_copy = strdup(section);  // `section` may point into the doc
     for (size_t i = doc->count; i-- > 0;) {
-        if (strcmp(doc->lines[i].section, section) == 0)
+        if (strcmp(doc->lines[i].section, section_copy) == 0)
             delete_line(doc, i);
     }
+    free(section_copy);
+    reclassify(doc);
 }
 
-void ini_doc_rename_section(IniDoc *doc, const char *from, const char *to)
+bool ini_doc_rename_section(IniDoc *doc, const char *from, const char *to)
 {
-    char *from_copy = strdup(from);  // `from` may point into the doc
+    if (!ini_doc_section_is_representable(to))
+        return false;
+    if (strcmp(from, to) == 0)
+        return true;
+    if (ini_doc_has_section(doc, to))
+        return false;  // renaming would merge two sections
+
+    // `from` and `to` may point into the doc
+    char *from_copy = strdup(from);
+    char *to_copy = strdup(to);
     for (size_t i = 0; i < doc->count; i++) {
         IniLine *line = &doc->lines[i];
         if (strcmp(line->section, from_copy) != 0)
             continue;
         free(line->section);
-        line->section = strdup(to);
+        line->section = strdup(to_copy);
         if (line->kind == LINE_SECTION) {
-            size_t n = strlen(to) + 3;
+            size_t n = strlen(to_copy) + 3;
             free(line->text);
             line->text = malloc(n);
-            snprintf(line->text, n, "[%s]", to);
+            snprintf(line->text, n, "[%s]", to_copy);
         }
     }
     free(from_copy);
+    free(to_copy);
+    reclassify(doc);
+    return true;
 }
 
-static char *read_file_bytes(const char *path)
+// Reads a whole file; `length` (optional) gets the number of bytes read
+static char *read_file_bytes(const char *path, size_t *length)
 {
     FILE *file = fopen(path, "rb");
     if (file == NULL)
@@ -563,6 +695,8 @@ static char *read_file_bytes(const char *path)
         return NULL;
     }
     buffer[size] = '\0';
+    if (length != NULL)
+        *length = read;
     return buffer;
 }
 
@@ -582,10 +716,10 @@ static int backup_file(const char *from, const char *to)
     struct stat st;
     if (stat(from, &st) != 0)
         return 0;
-    char *bytes = read_file_bytes(from);
+    size_t length = 0;
+    char *bytes = read_file_bytes(from, &length);
     if (bytes == NULL)
         return -1;
-    size_t length = (size_t) st.st_size;
     FILE *file = fopen(to, "wb");
     if (file == NULL) {
         free(bytes);
@@ -599,7 +733,7 @@ static int backup_file(const char *from, const char *to)
 
 IniDoc *ini_doc_load(const char *path)
 {
-    char *text = read_file_bytes(path);
+    char *text = read_file_bytes(path, NULL);
     if (text == NULL)
         return NULL;
     IniDoc *doc = ini_doc_parse(text);
