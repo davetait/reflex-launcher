@@ -17,6 +17,8 @@ set(SOURCES
   settings_schema.c
   settings_schema.h
   config_defaults.c
+  config_ui/settings_model.c
+  config_ui/settings_model.h
 )
 if (UNIX)
   add_executable(${EXECUTABLE_TITLE} ${SOURCES})
