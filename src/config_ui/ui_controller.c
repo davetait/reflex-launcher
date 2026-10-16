@@ -42,6 +42,7 @@ static void open_files(UiState *s, const SettingDef *def);
 static void leave_to_rows(UiState *s);
 static bool move_in_list(UiState *s, UiAction a, size_t count);
 static UiResult finish_text(UiState *s);
+static UiResult leave_and_save(UiState *s);
 
 void ui_init(UiState *s, SettingsModel *model)
 {
@@ -211,6 +212,13 @@ static UiResult save(UiState *s, bool force)
             show_message(s, origin, err[0] != '\0' ? err : "Could not save");
             return UI_RESULT_NONE;
     }
+}
+
+// Drops any in-progress pick and saves what is already stored
+static UiResult leave_and_save(UiState *s)
+{
+    leave_to_rows(s);
+    return save(s, false);
 }
 
 static UiResult apply_sections(UiState *s, UiAction a)
@@ -441,6 +449,8 @@ static UiResult apply_choice_list(UiState *s, UiAction a)
 {
     if (move_in_list(s, a, s->choice_count))
         return UI_RESULT_NONE;
+    if (a == UI_SAVE)
+        return leave_and_save(s);
     if (a == UI_BACK) {
         leave_to_rows(s);
     }
@@ -493,6 +503,11 @@ static UiResult apply_text(UiState *s, UiAction a)
             break;
         case UI_ACCEPT:
             return finish_text(s);
+        case UI_SAVE:
+            finish_text(s);
+            if (s->mode == MODE_ROWS)
+                return save(s, false);
+            break;
         case UI_SELECT: {
             TextResult result = text_input_press(s->text);
             if (result == TEXT_DONE)
@@ -534,6 +549,8 @@ static UiResult apply_color(UiState *s, UiAction a)
         case UI_BACK:
             leave_to_rows(s);
             break;
+        case UI_SAVE:
+            return leave_and_save(s);
         case UI_SELECT:
             if (i < UI_PALETTE_SIZE) {
                 char err[sizeof(s->footer)] = "";
@@ -568,6 +585,8 @@ static UiResult apply_files(UiState *s, UiAction a)
         case UI_BACK:
             leave_to_rows(s);
             break;
+        case UI_SAVE:
+            return leave_and_save(s);
         case UI_SELECT: {
             char path[PATH_BUF], err[sizeof(s->footer)] = "";
             FileBrowserResult result = file_browser_activate(s->files, s->list_index, path, sizeof(path), err, sizeof(err));
@@ -595,6 +614,8 @@ static UiResult apply_confirm_exit(UiState *s, UiAction a)
 {
     if (move_in_list(s, a, 3))
         return UI_RESULT_NONE;
+    if (a == UI_SAVE)
+        return save(s, false);
     if (a == UI_BACK) {
         s->mode = MODE_SECTIONS;
     }

@@ -283,20 +283,24 @@ static void test_files_mode(void)
     ui_free(&s);
 }
 
-static void open_file_model(UiState *s, const char *name, const char *text)
+static bool open_file_model(UiState *s, const char *name, const char *text)
 {
     char path[512], err[256] = "";
     test_tmp_path(path, sizeof(path), name);
     test_write_file(path, text);
     SettingsModel *m = settings_model_open(path, err, sizeof(err));
     CHECK(m != NULL);
+    if (m == NULL)
+        return false;
     ui_init(s, m);
+    return true;
 }
 
 static void test_save_success(void)
 {
     UiState s;
-    open_file_model(&s, "ui_save.ini", sample);
+    if (!open_file_model(&s, "ui_save.ini", sample))
+        return;
     focus(&s, "General", "VSync");
     ui_apply(&s, UI_SELECT);
     CHECK(ui_apply(&s, UI_SAVE) == UI_RESULT_SAVED);
@@ -311,7 +315,8 @@ static void test_save_success(void)
 static void test_save_from_exit_dialog(void)
 {
     UiState s;
-    open_file_model(&s, "ui_exit_save.ini", sample);
+    if (!open_file_model(&s, "ui_exit_save.ini", sample))
+        return;
     focus(&s, "General", "VSync");
     ui_apply(&s, UI_SELECT);
     ui_apply(&s, UI_BACK);
@@ -349,6 +354,10 @@ static void test_save_write_failure_keeps_screen(void)
     test_write_file(path, sample);
     SettingsModel *m = settings_model_open(path, err, sizeof(err));
     CHECK(m != NULL);
+    if (m == NULL) {
+        rmdir(dir);
+        return;
+    }
     ui_init(&s, m);
     focus(&s, "General", "VSync");
     ui_apply(&s, UI_SELECT);
@@ -379,7 +388,8 @@ static void test_save_write_failure_keeps_screen(void)
 static void test_save_too_long_value(void)
 {
     UiState s;
-    open_file_model(&s, "ui_long.ini", sample);
+    if (!open_file_model(&s, "ui_long.ini", sample))
+        return;
     focus(&s, "General", "StartupCmd");
     ui_apply(&s, UI_SELECT);
     CHECK(s.mode == MODE_TEXT);
@@ -398,7 +408,8 @@ static void test_save_too_long_value(void)
 static void test_overwrite_flow(void)
 {
     UiState s;
-    open_file_model(&s, "ui_overwrite.ini", sample);
+    if (!open_file_model(&s, "ui_overwrite.ini", sample))
+        return;
     focus(&s, "General", "VSync");
     ui_apply(&s, UI_SELECT);
     char path[512];
@@ -422,6 +433,73 @@ static void test_overwrite_flow(void)
     CHECK(s.mode == MODE_CONFIRM_OVERWRITE);
     CHECK(s.list_index == 0);
     CHECK(ui_apply(&s, UI_SELECT) == UI_RESULT_SAVED);
+    ui_free(&s);
+}
+
+static void test_save_from_text_mode(void)
+{
+    UiState s;
+    if (!open_file_model(&s, "ui_text_save.ini", sample))
+        return;
+    focus(&s, "General", "StartupCmd");
+    ui_apply(&s, UI_SELECT);
+    ui_type(&s, "echo hi");
+    CHECK(ui_apply(&s, UI_SAVE) == UI_RESULT_SAVED);
+    char path[512];
+    test_tmp_path(path, sizeof(path), "ui_text_save.ini");
+    char *text = test_read_file(path);
+    CHECK(text != NULL && strstr(text, "StartupCmd=echo hi") != NULL);
+    free(text);
+    ui_free(&s);
+
+    if (!open_file_model(&s, "ui_text_invalid.ini", sample))
+        return;
+    focus(&s, "Layout", "IconSize");
+    ui_apply(&s, UI_SELECT);
+    for (int i = 0; i < 3; i++)
+        ui_apply(&s, UI_ERASE);
+    ui_type(&s, "5000");
+    CHECK(ui_apply(&s, UI_SAVE) == UI_RESULT_NONE);
+    CHECK(s.mode == MODE_TEXT);
+    CHECK(s.footer[0] != '\0');
+    CHECK(!settings_model_dirty(s.model));
+    ui_free(&s);
+}
+
+static void test_save_from_pick_modes(void)
+{
+    UiState s;
+    if (!open_file_model(&s, "ui_pick_save.ini", sample))
+        return;
+    focus(&s, "General", "OnLaunch");
+    ui_apply(&s, UI_SELECT);
+    CHECK(s.mode == MODE_CHOICE_LIST);
+    ui_apply(&s, UI_DOWN);
+    CHECK(ui_apply(&s, UI_SAVE) == UI_RESULT_SAVED);
+    CHECK(s.mode == MODE_ROWS);
+    CHECK_STR(shown(&s, "General", "OnLaunch"), "Blank");
+    focus(&s, "Background", "Color");
+    ui_apply(&s, UI_SELECT);
+    CHECK(s.mode == MODE_COLOR);
+    CHECK(ui_apply(&s, UI_SAVE) == UI_RESULT_SAVED);
+    CHECK(s.mode == MODE_ROWS);
+    focus(&s, "Background", "Image");
+    ui_apply(&s, UI_SELECT);
+    CHECK(s.mode == MODE_FILES);
+    CHECK(ui_apply(&s, UI_SAVE) == UI_RESULT_SAVED);
+    CHECK(s.mode == MODE_ROWS);
+    CHECK(s.files == NULL);
+    ui_free(&s);
+
+    if (!open_file_model(&s, "ui_exit_key_save.ini", sample))
+        return;
+    focus(&s, "General", "VSync");
+    ui_apply(&s, UI_SELECT);
+    ui_apply(&s, UI_BACK);
+    ui_apply(&s, UI_BACK);
+    CHECK(s.mode == MODE_CONFIRM_EXIT);
+    ui_apply(&s, UI_RIGHT);
+    CHECK(ui_apply(&s, UI_SAVE) == UI_RESULT_SAVED);
     ui_free(&s);
 }
 
@@ -453,5 +531,7 @@ void suite_ui_controller(void)
     test_save_write_failure_keeps_screen();
     test_save_too_long_value();
     test_overwrite_flow();
+    test_save_from_text_mode();
+    test_save_from_pick_modes();
     test_error_screen_closes();
 }
