@@ -12,6 +12,7 @@ void suite_config_io(void);
 void suite_settings_model(void);
 void suite_text_input(void);
 void suite_file_browser(void);
+void suite_ui_controller(void);
 
 static const struct {
     const char *name;
@@ -23,6 +24,7 @@ static const struct {
     {"settings_model", suite_settings_model},
     {"text_input", suite_text_input},
     {"file_browser", suite_file_browser},
+    {"ui_controller", suite_ui_controller},
 };
 
 void test_tmp_path(char *buf, size_t len, const char *name)
