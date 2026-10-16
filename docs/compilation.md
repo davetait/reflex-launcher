@@ -7,6 +7,7 @@ title: Compilation Guide
 1. [Overview](#overview)
 2. [Linux](#linux)
 3. [Windows](#windows)
+4. [macOS](#macos)
 
 ## Overview
  Flex Launcher builds natively on Linux and Windows, and features a cross-platform CMake build system. The following external dependencies are required:
@@ -90,3 +91,24 @@ Optionally, generate a clean zipped install package which may then be extracted 
 ```
 cmake --build . --config Release --target package
 ```
+
+## macOS
+macOS support is build-from-source only. Install [Homebrew](https://brew.sh), then the dependencies:
+```bash
+brew install cmake pkgconf sdl2 sdl2_image sdl2_ttf inih
+```
+
+### Building
+```bash
+git clone https://github.com/complexlogic/flex-launcher.git
+cd flex-launcher
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+./build/flex-launcher
+```
+Optionally, install it with `sudo cmake --install build`. The program and assets go under `/usr/local` unless you pass `-DCMAKE_INSTALL_PREFIX=prefix` at configure time.
+
+### macOS notes
+- The config file and log use the same locations as Linux: `~/.config/flex-launcher/config.ini` and `~/.local/share/flex-launcher/flex-launcher.log`.
+- Linux `.desktop` files are not supported. Launch applications with `open`, e.g. `Entry1=Kodi;/path/to/kodi.png;open -a Kodi`.
+- The `:shutdown` and `:restart` commands use AppleScript (`osascript`). The first time you use one, macOS asks you to allow Flex Launcher (or your terminal) to control "System Events". `:sleep` uses `pmset sleepnow`.

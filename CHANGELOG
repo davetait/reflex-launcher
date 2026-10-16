@@ -1,3 +1,7 @@
+Unreleased
+- macOS: Build from source with Homebrew dependencies (fork)
+- Fix crash when LANG is unset or the display reports a 0 Hz refresh rate
+
 v2.2 (2024-11-24)
 - Make application timeout configurable
 - Add WrapEntries feature

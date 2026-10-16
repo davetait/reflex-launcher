@@ -14,8 +14,8 @@ void scmd_shutdown(void);
 void scmd_restart(void);
 void scmd_sleep(void);
 
-// Linux-specific function prototypes
-#ifdef __unix__
+// POSIX (Linux/macOS) function prototypes
+#ifdef PLATFORM_POSIX
 void make_directory(const char *directory);
 void print_usage(void);
 #endif

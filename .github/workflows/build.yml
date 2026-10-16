@@ -8,7 +8,7 @@ on:
 
   pull_request:
     branches:
-      - master
+      - main
     paths-ignore:
       [
         "**/**.md"
@@ -127,6 +127,27 @@ jobs:
         with:
           files: build/*${{matrix.config.package_ext}}
           token: ${{secrets.ACTIONS_SECRET}}
+
+  build_macos:
+    name: macOS
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+
+    env:
+      CMAKE_BUILD_TYPE: Release
+
+    steps:
+      - name: Checkout Git repository
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: brew install cmake pkgconf sdl2 sdl2_image sdl2_ttf inih
+
+      - name: Build
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=${{env.CMAKE_BUILD_TYPE}}
+          cmake --build build --config ${{env.CMAKE_BUILD_TYPE}}
 
   build_rpi:
     name: Raspberry Pi

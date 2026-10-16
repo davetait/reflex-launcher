@@ -198,13 +198,18 @@ void scan_slideshow_directory(Slideshow *slideshow, const char *directory)
 
 void get_region(char *buffer)
 {
-    char *lang = getenv("LANG");
-    char *token = strtok(lang, "_");
-    if (token == NULL)
+    // LANG is often unset when launched outside a shell (e.g. on macOS)
+    const char *env_lang = getenv("LANG");
+    if (env_lang == NULL)
         return;
-    token = strtok(NULL, ".");
-    if (token != NULL && strlen(token) == 2)
-        copy_string(buffer, token, 3);
+    char *lang = strdup(env_lang);
+    char *token = strtok(lang, "_");
+    if (token != NULL) {
+        token = strtok(NULL, ".");
+        if (token != NULL && strlen(token) == 2)
+            copy_string(buffer, token, 3);
+    }
+    free(lang);
 }
 
 // A function to shutdown the computer

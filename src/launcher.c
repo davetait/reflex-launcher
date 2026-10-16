@@ -194,7 +194,7 @@ static void init_sdl()
 {    
     // Set flags, hints
     Uint32 sdl_flags = SDL_INIT_VIDEO;
-#ifdef __unix__
+#ifdef PLATFORM_POSIX
     SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
 #endif
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
@@ -207,6 +207,10 @@ static void init_sdl()
         log_fatal("Could not initialize SDL\n%s", SDL_GetError());
 
     SDL_GetDesktopDisplayMode(0, &display_mode);
+    if (display_mode.refresh_rate <= 0) {
+        log_debug("Display reported refresh rate %i, assuming 60 Hz", display_mode.refresh_rate);
+        display_mode.refresh_rate = 60;
+    }
     geo.screen_width = display_mode.w;
     geo.screen_height = display_mode.h;
     refresh_period = 1000 / (Uint32) display_mode.refresh_rate;

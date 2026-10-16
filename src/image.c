@@ -396,7 +396,7 @@ int load_font(TextInfo *info, const char *default_font)
         const char *prefixes[2];
         char fonts_exe_buffer[MAX_PATH_CHARS + 1];
         prefixes[0] = join_paths(fonts_exe_buffer, sizeof(fonts_exe_buffer), 3, config.exe_path, PATH_ASSETS_EXE, PATH_FONTS_EXE);
-#ifdef __unix__
+#ifdef PLATFORM_POSIX
         prefixes[1] = PATH_FONTS_SYSTEM;
 #else
         prefixes[1] = PATH_FONTS_RELATIVE;

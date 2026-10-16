@@ -39,8 +39,9 @@ endif ()
 # Import settings
 include(${PROJECT_SOURCE_DIR}/config/config_settings.cmake)
 
-# Find dependencies - Linux
+# Find dependencies - Linux and macOS
 if (UNIX)
+  add_compile_definitions(PLATFORM_POSIX)
   find_package(PkgConfig MODULE REQUIRED)
   pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2>=${MIN_SDL_VERSION})
   pkg_check_modules(SDL2_IMAGE REQUIRED IMPORTED_TARGET SDL2_image>=${MIN_SDL_IMAGE_VERSION})
@@ -60,10 +61,13 @@ if (WIN32)
   find_library(GETOPT getopt REQUIRED)
 endif () 
 
-# Build configuration - Linux
+# Build configuration - Linux and macOS
 if (UNIX)
   if (NOT CMAKE_BUILD_TYPE MATCHES "Debug")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2 -s")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2")
+    if (NOT APPLE)
+      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -s")
+    endif ()
   endif ()
   set(CMAKE_SHARED_LINKER_FLAGS "--as-needed")
 endif ()
@@ -87,6 +91,15 @@ if (WIN32)
     set(ICON_GAMES "steam.png")
     set(CMD_GAMES "${DESKTOP_PATH}/steam.desktop;BigPicture")
   endif ()
+endif ()
+
+# Configure default applications - macOS
+if (APPLE)
+  set(CMD_KODI "open -a Kodi")
+  set(CMD_PLEX "open -a 'Plex HTPC'")
+  set(TITLE_GAMES "Steam")
+  set(ICON_GAMES "steam.png")
+  set(CMD_GAMES "open steam://open/bigpicture")
 endif ()
 
 # Configure default applications - Windows
@@ -200,7 +213,7 @@ if (PACKAGE)
 endif ()
 
 #Configure Linux application icons and .desktop file
-if (UNIX)
+if (UNIX AND NOT APPLE)
   configure_file("${PROJECT_SOURCE_DIR}/config/launcher.desktop.in" "${PROJECT_BINARY_DIR}/install/${EXECUTABLE_TITLE}.desktop")
   install(FILES "${PROJECT_BINARY_DIR}/install/${EXECUTABLE_TITLE}.desktop" DESTINATION "${INSTALL_DIR_DESKTOP}")
   set(INSTALL_DIR_ICONS "${CMAKE_INSTALL_PREFIX}/share/icons")
