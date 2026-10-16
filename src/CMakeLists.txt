@@ -17,6 +17,20 @@ set(SOURCES
   settings_schema.c
   settings_schema.h
   config_defaults.c
+  config_ui/settings_model.c
+  config_ui/settings_model.h
+  config_ui/text_input.c
+  config_ui/text_input.h
+  config_ui/file_browser.c
+  config_ui/file_browser.h
+  config_ui/ui_controller.c
+  config_ui/ui_controller.h
+  config_ui/ui_text.c
+  config_ui/ui_text.h
+  config_ui/ui_render.c
+  config_ui/ui_render.h
+  config_ui/config_ui.c
+  config_ui/config_ui.h
 )
 if (UNIX)
   add_executable(${EXECUTABLE_TITLE} ${SOURCES})

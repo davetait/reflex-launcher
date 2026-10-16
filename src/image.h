@@ -23,6 +23,8 @@ typedef struct {
 
 int init_svg(void);
 int load_font(TextInfo *info, const char *default_font);
+// Malloc'd path to a bundled font (same search as load_font's fallback), or NULL
+char *find_default_font(const char *filename);
 void quit_svg(void);
 void render_scroll_indicators(Scroll *scroll, int height, Geometry *geo);
 SDL_Surface *load_next_slideshow_background(Slideshow *slideshow, bool transition);

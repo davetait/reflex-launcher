@@ -354,3 +354,63 @@ int replace_file(const char *from, const char *to)
 {
     return MoveFileExA(from, to, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) ? 0 : -1;
 }
+
+// A function to list a directory's visible entries (ANSI API, like replace_file())
+int list_directory(const char *path, DirEntry **entries, size_t *count)
+{
+    *entries = NULL;
+    *count = 0;
+    char pattern[MAX_PATH_CHARS];
+    int written = snprintf(pattern, sizeof(pattern), "%s\\*", path);
+    if (written < 0 || (size_t) written >= sizeof(pattern))
+        return -1;
+    WIN32_FIND_DATAA data;
+    HANDLE find = FindFirstFileA(pattern, &data);
+    if (find == INVALID_HANDLE_VALUE)
+        return -1;
+    DirEntry *list = NULL;
+    size_t length = 0, capacity = 0;
+    do {
+        if (data.cFileName[0] == '.' || (data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN))
+            continue;
+        if (length == capacity) {
+            size_t new_capacity = capacity == 0 ? 32 : capacity * 2;
+            DirEntry *grown = realloc(list, new_capacity * sizeof(DirEntry));
+            if (grown == NULL)
+                goto fail;
+            list = grown;
+            capacity = new_capacity;
+        }
+        list[length].name = _strdup(data.cFileName);
+        if (list[length].name == NULL)
+            goto fail;
+        list[length].is_dir = (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+        length++;
+    } while (FindNextFileA(find, &data));
+    FindClose(find);
+    *entries = list;
+    *count = length;
+    return 0;
+fail:
+    FindClose(find);
+    free_dir_entries(list, length);
+    return -1;
+}
+
+void free_dir_entries(DirEntry *entries, size_t count)
+{
+    for (size_t i = 0; i < count; i++)
+        free(entries[i].name);
+    free(entries);
+}
+
+char *absolute_path(const char *path)
+{
+    return _fullpath(NULL, path, 0);
+}
+
+const char *home_directory(void)
+{
+    const char *home = getenv("USERPROFILE");
+    return (home != NULL && home[0] != '\0') ? home : NULL;
+}

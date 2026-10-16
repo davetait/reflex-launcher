@@ -430,10 +430,59 @@ Restart the computer.<sup>1</sup>
 #### :reload
 Re-reads the config file and applies it without restarting. Before changing anything, it reads the file and checks its structure: a default menu that exists and has entries, entries in `title;icon;command` form, submenu targets that exist, and hotkeys in `#XX;command` form. If the check fails, the error is logged and the current settings stay in effect. If a file that passed the check still fails to load (for example, the renderer can't be created), the launcher restores `config.ini.bak` (written by the in-app settings editor), keeps the broken file as `config.ini.failed`, and logs the error. If there is no backup to restore, the launcher exits with an error.
 
+#### :config
+Opens the in-app [Settings screen](#settings-screen), which edits every scalar setting in `config.ini`. The default config has a Settings entry that uses it.
+
 #### :sleep
 Put the computer to sleep.<sup>1</sup>
 
 <sup>1</sup> *Linux: Works in systemd-based distros only. Non-systemd distro users need to implement the command manually for their init system.*
+
+### Settings Screen
+The `:config` command opens a Settings screen that edits the scalar settings in `config.ini` (everything in the sections described in this document except menus, entries and hotkeys). Changes are staged until you save. Saving writes `config.ini` (keeping the previous version as `config.ini.bak`), closes the screen, and reloads the launcher in place.
+
+The screen uses a fixed set of controls that do not depend on your hotkeys or gamepad bindings:
+
+| Action | Keyboard | Gamepad |
+|---|---|---|
+| Move (hold to repeat) | Arrow keys | D-pad, left stick |
+| Select / OK | Enter | A |
+| Back / Cancel | Escape, Backspace | B |
+| Reset to default | Delete | Y |
+| Save | Ctrl+S, F2 | Start |
+| Text entry | Type on a physical keyboard, or use the on-screen keyboard | On-screen keyboard; X erases a character |
+
+In text entry, Backspace erases a character instead of going back, and the Left and Right arrow keys move the text cursor (Up and Down, and the D-pad, still move around the on-screen keyboard). When you edit a number, the first key you type or press replaces the current value; erase or move the cursor first to change the value instead.
+
+- Save works from anywhere in the screen. If you leave with unsaved changes, a dialog offers Save, Discard or Keep editing. Save with nothing changed just closes the screen, without writing the file or reloading.
+- If `config.ini` was changed outside the app since it was opened, saving asks whether to Overwrite or Cancel.
+- Save errors are shown in a dialog and the screen stays open.
+- Home menu can't be reset: there is no built-in menu to fall back to. Pick another menu instead.
+- While the screen is open, your hotkeys, gamepad bindings and the screensaver are suspended. After Settings closes, gamepad buttons still held are ignored until released, and held keys don't repeat into the launcher.
+- Menus, entries and hotkeys are still edited in `config.ini`. A future update will add a menu editor.
+
+Two changes ask before saving, because they could leave you unable to get back to Settings with your remote or gamepad. In both dialogs **Keep editing** is selected by default (Back does the same) and returns you to where you pressed Save; **Save anyway** saves.
+- *"After saving, Settings can't be opened from the home menu. Save anyway?"* appears when Settings could be opened before but no longer could. Settings counts as reachable if a menu you can get to from the home menu (directly or through `:submenu` entries) has a `:config` entry, or a hotkey or gamepad binding is `:config`. If you save anyway, open Settings with a `:config` hotkey or by editing `config.ini`.
+- *"These gamepad changes may stop your controller from working in the launcher. Save anyway?"* appears when you are using a gamepad in the Settings screen and you turn off `[Gamepad] Enabled` or change any gamepad setting.
+
+If both apply, the home menu question comes first.
+
+#### Read-only config files (Linux and macOS)
+A config installed with a package (such as `/usr/share/flex-launcher/config.ini`) usually can't be written by your user. The Settings screen then shows *"This config is read-only — Save will offer to save a copy"* when it opens (until your first key press). When you save, a dialog asks whether to save your changes to `~/.config/flex-launcher/config.ini` instead:
+- **Save copy** creates the `~/.config/flex-launcher` folder if needed, writes the whole config with your changes there (an existing file there is replaced and kept as `config.ini.bak`), and reloads the launcher from the copy. The launcher looks in `~/.config/flex-launcher` before `/usr/share/flex-launcher`, so it keeps using the copy after a restart unless a `config.ini` in the current folder or next to the executable comes first.
+- **Cancel** (or Back) returns to the screen with your changes intact.
+
+On Windows, saving a config that can't be written shows the error message instead.
+
+#### Adding Settings to an existing config
+If you installed Reflex Launcher before this feature existed, your config has no Settings entry. Add one to a menu, pointing at the bundled `settings.svg` icon:
+- .deb install: `/usr/share/flex-launcher/assets/icons/settings.svg`
+- Windows: `<install folder>\assets\icons\settings.svg`, where `<install folder>` is the folder that holds `flex-launcher.exe`
+
+```
+EntryN=Settings;/usr/share/flex-launcher/assets/icons/settings.svg;:config
+```
+If you copied the bundled assets to another folder earlier, your copy predates this icon and doesn't have `settings.svg`: point the entry at the installed icon above, or copy `settings.svg` into your folder.
 
 ### Desktop Files (Linux Only)
 If the application you want to launch was installed via your distro's package manager, a .desktop file was most likely provided. The command to launch a Linux application can simply be the path to its .desktop file, and Flex Launcher will run the Exec command that the developers have specified in the file. Desktop files are located in /usr/share/applications.
