@@ -259,13 +259,14 @@ static void make_key_line(IniLine *line, const char *key, const char *value)
     size_t n = strlen(key) + strlen(value) + 2;
     char *text = malloc(n);
     snprintf(text, n, "%s=%s", key, value);
+    char *new_key = strdup(key);
+    char *new_value = strdup(value);
     free(line->text);
     line->text = text;
-    char *new_key = strdup(key);
     free(line->key);
     line->key = new_key;
     free(line->value);
-    line->value = strdup(value);
+    line->value = new_value;
     line->kind = LINE_KEY;
 }
 
@@ -357,6 +358,16 @@ void ini_doc_unset(IniDoc *doc, const char *section, const char *key)
             free(line->text);
             line->text = text;
             line->kind = LINE_COMMENTED_KEY;
+            // Also comment out continuation lines that follow this key
+            for (size_t j = i + 1; j < doc->count && doc->lines[j].kind == LINE_CONTINUATION; j++) {
+                IniLine *cont = &doc->lines[j];
+                size_t cont_n = strlen(cont->text) + 2;
+                char *cont_text = malloc(cont_n);
+                snprintf(cont_text, cont_n, "#%s", cont->text);
+                free(cont->text);
+                cont->text = cont_text;
+                cont->kind = LINE_COMMENT;
+            }
             mark_dirty(doc, section, key);
         }
     }

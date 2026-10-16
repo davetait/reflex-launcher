@@ -122,12 +122,31 @@ static void test_set(void)
 static void test_set_rejects_lossy_values(void)
 {
     IniDoc *doc = ini_doc_parse("[General]\nStartupCmd=old\n");
+    char *before = ini_doc_serialize(doc);
+    size_t dirty_before = ini_doc_dirty_count(doc);
+
     CHECK(!ini_doc_set(doc, "General", "StartupCmd", "sh -c \"a ; b\""));  // inline comment
+    char *after_reject_1 = ini_doc_serialize(doc);
+    CHECK_STR(before, after_reject_1);
+    CHECK(ini_doc_dirty_count(doc) == dirty_before);
+    free(after_reject_1);
+
     CHECK(!ini_doc_set(doc, "General", "StartupCmd", "line1\nline2"));
+    char *after_reject_2 = ini_doc_serialize(doc);
+    CHECK_STR(before, after_reject_2);
+    CHECK(ini_doc_dirty_count(doc) == dirty_before);
+    free(after_reject_2);
+
     CHECK(!ini_doc_set(doc, "General", "StartupCmd", " padded"));
+    char *after_reject_3 = ini_doc_serialize(doc);
+    CHECK_STR(before, after_reject_3);
+    CHECK(ini_doc_dirty_count(doc) == dirty_before);
+    free(after_reject_3);
+
     CHECK(ini_doc_set(doc, "General", "StartupCmd", "a;b"));              // ';' without a space is fine
     CHECK(ini_doc_value_is_representable(""));
     CHECK_STR(ini_doc_get(doc, "General", "StartupCmd"), "a;b");
+    free(before);
     ini_doc_free(doc);
 }
 
@@ -150,6 +169,34 @@ static void test_unset_and_dirty(void)
     ini_doc_free(doc);
 }
 
+static void test_set_with_aliasing(void)
+{
+    // Test that setting a key to its own ini_doc_get() value doesn't use-after-free
+    IniDoc *doc = ini_doc_parse("[General]\nStartupCmd=old_value\n");
+    const char *current_value = ini_doc_get(doc, "General", "StartupCmd");
+    CHECK_STR(current_value, "old_value");
+    // This should not crash or read freed memory
+    CHECK(ini_doc_set(doc, "General", "StartupCmd", current_value));
+    CHECK_STR(ini_doc_get(doc, "General", "StartupCmd"), "old_value");
+    char *out = ini_doc_serialize(doc);
+    CHECK_STR(out, "[General]\nStartupCmd=old_value\n");
+    free(out);
+    ini_doc_free(doc);
+}
+
+static void test_unset_multiline(void)
+{
+    // Test that unsetting a key with continuation lines comments them all out
+    IniDoc *doc = ini_doc_parse("[A]\nk=one\n  two\nz=1\n");
+    ini_doc_unset(doc, "A", "k");
+    // After unset, get should return NULL (continuation lines are now comments)
+    CHECK_STR(ini_doc_get(doc, "A", "k"), NULL);
+    char *out = ini_doc_serialize(doc);
+    CHECK_STR(out, "[A]\n#k=one\n#  two\nz=1\n");
+    free(out);
+    ini_doc_free(doc);
+}
+
 void suite_ini_doc(void)
 {
     test_round_trip();
@@ -158,4 +205,6 @@ void suite_ini_doc(void)
     test_set();
     test_set_rejects_lossy_values();
     test_unset_and_dirty();
+    test_set_with_aliasing();
+    test_unset_multiline();
 }
