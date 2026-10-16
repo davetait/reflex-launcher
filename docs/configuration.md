@@ -457,7 +457,7 @@ In text entry, Backspace erases a character instead of going back.
 - Save works from anywhere in the screen. If you leave with unsaved changes, a dialog offers Save, Discard or Keep editing.
 - If `config.ini` was changed outside the app since it was opened, saving asks whether to Overwrite or Cancel.
 - Save errors are shown in a dialog and the screen stays open.
-- While the screen is open, your hotkeys, gamepad bindings and the screensaver are suspended. After it closes, keys and buttons that are still held are ignored until released.
+- While the screen is open, your hotkeys, gamepad bindings and the screensaver are suspended. After Settings closes, gamepad buttons still held are ignored until released, and held keys don't repeat into the launcher.
 - Menus, entries and hotkeys are still edited in `config.ini`. A future update will add a menu editor.
 
 If you installed Reflex Launcher before this feature existed, your config has no Settings entry. Add one to a menu, pointing at the `settings.svg` icon in the same directory as your other bundled icons:
