@@ -55,6 +55,9 @@ static const SDL_Color COLOR_SWATCH_EDGE = {255, 255, 255, 90};
 
 static const char *const HINTS = "Select: change   Left/Right: adjust   Y/Del: reset   "
                                  "Start/Ctrl+S: save   B/Esc: back";
+static const char *const TEXT_HINTS = "Select: press key   X/Backspace: erase   Start/Ctrl+S: save   B/Esc: cancel";
+static const char *const PICK_HINTS = "Select: choose   B/Esc: cancel   Start/Ctrl+S: save";
+static const char *const DIALOG_HINTS = "Select: choose   B/Esc: cancel";
 static const char *const CLOSE_HINTS = "Select or B/Esc: close";
 static const char *const EXIT_MESSAGE = "You have unsaved changes. Save them before leaving?";
 static const char *const ELLIPSIS = "\xE2\x80\xA6";
@@ -83,6 +86,7 @@ static void draw_sidebar(const Frame *f);
 static void draw_rows(const Frame *f);
 static void draw_control(const Frame *f, const SettingDef *def, int right, int cy, int max_w, bool focused);
 static void draw_stepper(const Frame *f, const char *value, SDL_Color color, int right, int cy, int max_w, bool focused);
+static const char *hints_for(const UiState *s);
 static void draw_footer(const Frame *f);
 
 // Overlays
@@ -668,6 +672,31 @@ static void draw_control(const Frame *f, const SettingDef *def, int right, int c
     }
 }
 
+// The input hints for the current mode
+static const char *hints_for(const UiState *s)
+{
+    if (s->model == NULL)
+        return CLOSE_HINTS;
+    switch (s->mode) {
+        case MODE_TEXT:
+            return TEXT_HINTS;
+        case MODE_CHOICE_LIST:
+        case MODE_FILES:
+        case MODE_COLOR:
+            return PICK_HINTS;
+        case MODE_CONFIRM_EXIT:
+        case MODE_CONFIRM_OVERWRITE:
+        case MODE_CONFIRM_RISK:
+        case MODE_CONFIRM_COPY:
+        case MODE_MESSAGE:
+            return DIALOG_HINTS;
+        case MODE_SECTIONS:
+        case MODE_ROWS:
+        default:
+            return HINTS;
+    }
+}
+
 static void draw_footer(const Frame *f)
 {
     const UiState *s = f->s;
@@ -689,7 +718,7 @@ static void draw_footer(const Frame *f)
             draw_text(f, UI_FONT_SMALL, line, COLOR_LABEL, x0, cy1, ALIGN_LEFT);
         }
     }
-    fit_text(f, UI_FONT_SMALL, s->model != NULL ? HINTS : CLOSE_HINTS, x1 - x0, false, line, sizeof(line));
+    fit_text(f, UI_FONT_SMALL, hints_for(s), x1 - x0, false, line, sizeof(line));
     draw_text(f, UI_FONT_SMALL, line, COLOR_DIM, x0, cy2, ALIGN_LEFT);
 }
 

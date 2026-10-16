@@ -218,9 +218,12 @@ static bool move_in_list(UiState *s, UiAction a, size_t count)
     return false;
 }
 
-// Starts a save from the current mode; its dialogs return there
+// Starts a save from the current mode; its dialogs return there. Without changes it just closes.
 static UiResult save(UiState *s)
 {
+    // Nothing to write: just leave, without touching the file or reloading
+    if (!settings_model_dirty(s->model))
+        return UI_RESULT_CLOSE;
     s->return_mode = s->mode;
     s->risks_accepted = 0;
     return continue_save(s, false);
@@ -370,7 +373,11 @@ static UiResult apply_rows(UiState *s, UiAction a)
             s->mode = MODE_SECTIONS;
             break;
         case UI_RESET:
-            settings_model_reset(s->model, def);
+            // The home menu has no built-in default the launcher could fall back to
+            if (def->type == SET_MENU_REF)
+                snprintf(s->footer, sizeof(s->footer), "%s can't be reset", def->label);
+            else
+                settings_model_reset(s->model, def);
             break;
         case UI_SAVE:
             return save(s);

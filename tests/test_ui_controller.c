@@ -297,6 +297,18 @@ static void test_reset(void)
     ui_free(&s);
 }
 
+static void test_home_menu_reset_refused(void)
+{
+    UiState s;
+    open_sample(&s);
+    focus(&s, "General", "DefaultMenu");
+    CHECK(ui_apply(&s, UI_RESET) == UI_RESULT_NONE);
+    CHECK_STR(s.footer, "Home menu can't be reset");
+    CHECK(!settings_model_dirty(s.model));
+    CHECK_STR(shown(&s, "General", "DefaultMenu"), "Main");
+    ui_free(&s);
+}
+
 static void test_files_mode(void)
 {
     UiState s;
@@ -332,6 +344,24 @@ static bool open_file_model(UiState *s, const char *name, const char *text)
         return false;
     ui_init(s, m);
     return true;
+}
+
+static void test_save_without_changes_closes(void)
+{
+    UiState s;
+    if (!open_file_model(&s, "ui_noop.ini", sample))
+        return;
+    char path[512], bak[600];
+    test_tmp_path(path, sizeof(path), "ui_noop.ini");
+    snprintf(bak, sizeof(bak), "%s.bak", path);
+    remove(bak);
+    CHECK(ui_apply(&s, UI_SAVE) == UI_RESULT_CLOSE);
+    focus(&s, "General", "VSync");
+    CHECK(ui_apply(&s, UI_SAVE) == UI_RESULT_CLOSE);
+    char *text = test_read_file(bak);
+    CHECK(text == NULL);
+    free(text);
+    ui_free(&s);
 }
 
 static void test_save_success(void)
@@ -510,6 +540,9 @@ static void test_save_from_pick_modes(void)
     UiState s;
     if (!open_file_model(&s, "ui_pick_save.ini", sample))
         return;
+    // Each save needs a change to write (a save without one just closes)
+    focus(&s, "General", "VSync");
+    ui_apply(&s, UI_SELECT);
     focus(&s, "General", "OnLaunch");
     ui_apply(&s, UI_SELECT);
     CHECK(s.mode == MODE_CHOICE_LIST);
@@ -517,17 +550,26 @@ static void test_save_from_pick_modes(void)
     CHECK(ui_apply(&s, UI_SAVE) == UI_RESULT_SAVED);
     CHECK(s.mode == MODE_ROWS);
     CHECK_STR(shown(&s, "General", "OnLaunch"), "Blank");
+    focus(&s, "General", "VSync");
+    ui_apply(&s, UI_SELECT);
     focus(&s, "Background", "Color");
     ui_apply(&s, UI_SELECT);
     CHECK(s.mode == MODE_COLOR);
     CHECK(ui_apply(&s, UI_SAVE) == UI_RESULT_SAVED);
     CHECK(s.mode == MODE_ROWS);
+    focus(&s, "General", "VSync");
+    ui_apply(&s, UI_SELECT);
     focus(&s, "Background", "Image");
     ui_apply(&s, UI_SELECT);
     CHECK(s.mode == MODE_FILES);
     CHECK(ui_apply(&s, UI_SAVE) == UI_RESULT_SAVED);
     CHECK(s.mode == MODE_ROWS);
     CHECK(s.files == NULL);
+    // Nothing changed: Save closes without writing
+    focus(&s, "Background", "Color");
+    ui_apply(&s, UI_SELECT);
+    CHECK(ui_apply(&s, UI_SAVE) == UI_RESULT_CLOSE);
+    CHECK(s.mode == MODE_ROWS);
     ui_free(&s);
 
     if (!open_file_model(&s, "ui_exit_key_save.ini", sample))
@@ -817,6 +859,8 @@ void suite_ui_controller(void)
     test_color_picker();
     test_text_cursor_keys();
     test_reset();
+    test_save_without_changes_closes();
+    test_home_menu_reset_refused();
     test_files_mode();
     test_save_success();
     test_save_from_exit_dialog();
