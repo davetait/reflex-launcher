@@ -10,6 +10,7 @@ void suite_ini_doc(void);
 void suite_schema(void);
 void suite_config_io(void);
 void suite_settings_model(void);
+void suite_text_input(void);
 
 static const struct {
     const char *name;
@@ -19,6 +20,7 @@ static const struct {
     {"schema", suite_schema},
     {"config_io", suite_config_io},
     {"settings_model", suite_settings_model},
+    {"text_input", suite_text_input},
 };
 
 void test_tmp_path(char *buf, size_t len, const char *name)
