@@ -430,10 +430,40 @@ Restart the computer.<sup>1</sup>
 #### :reload
 Re-reads the config file and applies it without restarting. Before changing anything, it reads the file and checks its structure: a default menu that exists and has entries, entries in `title;icon;command` form, submenu targets that exist, and hotkeys in `#XX;command` form. If the check fails, the error is logged and the current settings stay in effect. If a file that passed the check still fails to load (for example, the renderer can't be created), the launcher restores `config.ini.bak` (written by the in-app settings editor), keeps the broken file as `config.ini.failed`, and logs the error. If there is no backup to restore, the launcher exits with an error.
 
+#### :config
+Opens the in-app [Settings screen](#settings-screen), which edits every scalar setting in `config.ini`. The default config has a Settings entry that uses it.
+
 #### :sleep
 Put the computer to sleep.<sup>1</sup>
 
 <sup>1</sup> *Linux: Works in systemd-based distros only. Non-systemd distro users need to implement the command manually for their init system.*
+
+### Settings Screen
+The `:config` command opens a Settings screen that edits the scalar settings in `config.ini` (everything in the sections described in this document except menus, entries and hotkeys). Changes are staged until you save. Saving writes `config.ini` (keeping the previous version as `config.ini.bak`), closes the screen, and reloads the launcher in place.
+
+The screen uses a fixed set of controls that do not depend on your hotkeys or gamepad bindings:
+
+| Action | Keyboard | Gamepad |
+|---|---|---|
+| Move | Arrow keys | D-pad, left stick |
+| Select / OK | Enter | A |
+| Back / Cancel | Escape, Backspace | B |
+| Reset to default | Delete | Y |
+| Save | Ctrl+S, F2 | Start |
+| Text entry | Type on a physical keyboard, or use the on-screen keyboard | On-screen keyboard; X erases a character |
+
+In text entry, Backspace erases a character instead of going back.
+
+- Save works from anywhere in the screen. If you leave with unsaved changes, a dialog offers Save, Discard or Keep editing.
+- If `config.ini` was changed outside the app since it was opened, saving asks whether to Overwrite or Cancel.
+- Save errors are shown in a dialog and the screen stays open.
+- While the screen is open, your hotkeys, gamepad bindings and the screensaver are suspended. After it closes, keys and buttons that are still held are ignored until released.
+- Menus, entries and hotkeys are still edited in `config.ini`. A future update will add a menu editor.
+
+If you installed Reflex Launcher before this feature existed, your config has no Settings entry. Add one to a menu, pointing at the `settings.svg` icon in the same directory as your other bundled icons:
+```
+EntryN=Settings;/path/to/settings.svg;:config
+```
 
 ### Desktop Files (Linux Only)
 If the application you want to launch was installed via your distro's package manager, a .desktop file was most likely provided. The command to launch a Linux application can simply be the path to its .desktop file, and Flex Launcher will run the Exec command that the developers have specified in the file. Desktop files are located in /usr/share/applications.

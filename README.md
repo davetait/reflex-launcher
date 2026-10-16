@@ -128,6 +128,9 @@ Reflex Launcher does not feature built-in decoding of IR or CEC signals. If you 
 #### Gamepads
 Gamepad controls are built-in to the program, but are disabled by default. To enable them, open your configuration file and, under the "Gamepad" section, change the "Enabled" setting from false to true. After that, the gamepad controls should "Just Work" for most users. If your gamepad is not recognized automatically, or you want to change the default controls, see the [gamepad controls documentation](docs/configuration.md#gamepad-controls).
 
+### Settings
+The default menu has a Settings entry that opens an in-app screen for changing every scalar setting in `config.ini` with a remote, gamepad or keyboard. Saving applies the changes immediately. Menus and hotkeys are still edited in the file. See the [configuration documentation](docs/configuration.md#settings-screen) for the controls.
+
 ### Debugging
 Reflex Launcher has a debug mode which may be enabled as follows:
 ```bash

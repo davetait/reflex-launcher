@@ -1,4 +1,5 @@
 Unreleased
+- Add in-app Settings screen (:config) for all scalar settings
 - Add :reload special command to apply config.ini changes without restarting
 - Fix leaks and stale parser state when the config is re-read
 - macOS: Build from source with Homebrew dependencies (fork)
