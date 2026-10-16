@@ -21,6 +21,8 @@ set(SOURCES
   config_ui/settings_model.h
   config_ui/text_input.c
   config_ui/text_input.h
+  config_ui/file_browser.c
+  config_ui/file_browser.h
 )
 if (UNIX)
   add_executable(${EXECUTABLE_TITLE} ${SOURCES})

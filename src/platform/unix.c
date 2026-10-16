@@ -1,4 +1,6 @@
 #include <unistd.h>
+#include <dirent.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
@@ -246,4 +248,61 @@ void print_usage()
 int replace_file(const char *from, const char *to)
 {
     return rename(from, to) == 0 ? 0 : -1;
+}
+
+// A function to list a directory's visible entries
+int list_directory(const char *path, DirEntry **entries, size_t *count)
+{
+    *entries = NULL;
+    *count = 0;
+    DIR *dir = opendir(path);
+    if (dir == NULL)
+        return -1;
+    DirEntry *list = NULL;
+    size_t length = 0, capacity = 0;
+    struct dirent *item;
+    while ((item = readdir(dir)) != NULL) {
+        if (item->d_name[0] == '.')
+            continue;
+        char full[MAX_PATH_CHARS];
+        int written = snprintf(full, sizeof(full), "%s/%s", path, item->d_name);
+        if (written < 0 || (size_t) written >= sizeof(full))
+            continue;
+        struct stat info;
+        bool is_dir = stat(full, &info) == 0 && S_ISDIR(info.st_mode);
+        if (length == capacity) {
+            size_t new_capacity = capacity == 0 ? 32 : capacity * 2;
+            DirEntry *grown = realloc(list, new_capacity * sizeof(DirEntry));
+            if (grown == NULL)
+                goto fail;
+            list = grown;
+            capacity = new_capacity;
+        }
+        list[length].name = strdup(item->d_name);
+        if (list[length].name == NULL)
+            goto fail;
+        list[length].is_dir = is_dir;
+        length++;
+    }
+    closedir(dir);
+    *entries = list;
+    *count = length;
+    return 0;
+fail:
+    closedir(dir);
+    free_dir_entries(list, length);
+    return -1;
+}
+
+void free_dir_entries(DirEntry *entries, size_t count)
+{
+    for (size_t i = 0; i < count; i++)
+        free(entries[i].name);
+    free(entries);
+}
+
+const char *home_directory(void)
+{
+    const char *home = getenv("HOME");
+    return (home != NULL && home[0] != '\0') ? home : NULL;
 }
