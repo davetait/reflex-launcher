@@ -281,6 +281,66 @@ static void test_sections(void)
     ini_doc_free(doc);
 }
 
+static void test_set_list_reorder_aliasing(void)
+{
+    // Reproduces use-after-free when set_list is called with get_list output
+    IniDoc *doc = ini_doc_parse("[Main]\nEntry1=A;a;a\nEntry2=B;b;b\n");
+    const char **values = NULL;
+    size_t count = ini_doc_get_list(doc, "Main", &values);
+    CHECK(count == 2);
+
+    // Reorder the values by swapping them
+    const char *reordered[] = {values[1], values[0]};
+    CHECK(ini_doc_set_list(doc, "Main", "Entry", reordered, 2));
+
+    // Verify the list is correctly reordered
+    const char *expected[] = {"B;b;b", "A;a;a"};
+    check_list(doc, "Main", expected, 2);
+
+    // Verify serialization
+    char *out = ini_doc_serialize(doc);
+    CHECK_STR(out, "[Main]\nEntry1=B;b;b\nEntry2=A;a;a\n");
+    free(out);
+    free(values);
+    ini_doc_free(doc);
+}
+
+static void test_set_list_spread_and_zero(void)
+{
+    // List spread over duplicate [Main] block with continuation line and non-EntryN key
+    IniDoc *doc = ini_doc_parse(
+        "[Main]\nEntry1=A;a;a\nKodi=B;b;b\n"
+        "[Other]\nEntry1=X;x;x\n"
+        "[Main]\nEntry3=C;c;c\n  D;d;d\n");
+
+    // Set to 2 values
+    const char *new_values[] = {"P;p;p", "Q;q;q"};
+    CHECK(ini_doc_set_list(doc, "Main", "Entry", new_values, 2));
+
+    // Verify list contains exactly 2 values
+    const char **gotten = NULL;
+    size_t gotten_count = ini_doc_get_list(doc, "Main", &gotten);
+    CHECK(gotten_count == 2);
+    CHECK_STR(gotten[0], "P;p;p");
+    CHECK_STR(gotten[1], "Q;q;q");
+    free(gotten);
+
+    // Verify serialization: Entry1 and Entry2 reuse/replace the 4 existing list lines,
+    // Kodi becomes Entry2
+    char *out = ini_doc_serialize(doc);
+    CHECK_STR(out, "[Main]\nEntry1=P;p;p\nEntry2=Q;q;q\n[Other]\nEntry1=X;x;x\n[Main]\n");
+    free(out);
+    ini_doc_free(doc);
+
+    // Test count == 0: remove all list items, keep header
+    doc = ini_doc_parse("[Main]\nEntry1=A;a;a\nEntry2=B;b;b\n# keep\n[Other]\nEntry1=X;x;x\n");
+    CHECK(ini_doc_set_list(doc, "Main", "Entry", NULL, 0));
+    out = ini_doc_serialize(doc);
+    CHECK_STR(out, "[Main]\n# keep\n[Other]\nEntry1=X;x;x\n");
+    free(out);
+    ini_doc_free(doc);
+}
+
 void suite_ini_doc(void)
 {
     test_round_trip();
@@ -294,4 +354,6 @@ void suite_ini_doc(void)
     test_get_list_mirrors_config_handler();
     test_set_list();
     test_sections();
+    test_set_list_reorder_aliasing();
+    test_set_list_spread_and_zero();
 }

@@ -454,6 +454,12 @@ bool ini_doc_set_list(IniDoc *doc, const char *section, const char *prefix,
             return false;
     }
 
+    // Copy all values to avoid aliasing issues when values point into the doc
+    // (e.g., caller passes results from ini_doc_get_list)
+    char **values_copy = malloc(count * sizeof(char*));
+    for (size_t i = 0; i < count; i++)
+        values_copy[i] = strdup(values[i]);
+
     size_t *existing = malloc((doc->count + 1) * sizeof(size_t));
     size_t existing_count = 0;
     for (size_t i = 0; i < doc->count; i++) {
@@ -465,7 +471,7 @@ bool ini_doc_set_list(IniDoc *doc, const char *section, const char *prefix,
     size_t reused = count < existing_count ? count : existing_count;
     for (size_t i = 0; i < reused; i++) {
         snprintf(key, sizeof(key), "%s%zu", prefix, i + 1);
-        make_key_line(&doc->lines[existing[i]], key, values[i]);
+        make_key_line(&doc->lines[existing[i]], key, values_copy[i]);
     }
 
     // Delete surplus lines from the back so earlier indices stay valid
@@ -478,10 +484,13 @@ bool ini_doc_set_list(IniDoc *doc, const char *section, const char *prefix,
         snprintf(key, sizeof(key), "%s%zu", prefix, i + 1);
         IniLine line = { .kind = LINE_KEY, .text = strdup(""), .section = strdup(section) };
         insert_line(doc, at, line);
-        make_key_line(&doc->lines[at], key, values[i]);
+        make_key_line(&doc->lines[at], key, values_copy[i]);
         at++;
     }
     free(existing);
+    for (size_t i = 0; i < count; i++)
+        free(values_copy[i]);
+    free(values_copy);
     mark_dirty(doc, section, prefix);
     return true;
 }
