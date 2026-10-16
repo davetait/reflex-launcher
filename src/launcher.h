@@ -321,5 +321,8 @@ extern const Config default_config;
 void quit_slideshow(void);
 void set_draw_color(void);
 void quit(int status);
-int launcher_reload(void);
+// Re-read config.ini and rebuild the launcher. The reload is deferred to the top of the
+// next main loop iteration, because it frees the menus, entries, and hotkeys the caller
+// may be using. Safe to call from anywhere on the main thread.
+void launcher_request_reload(void);
 void print_version(FILE *stream);

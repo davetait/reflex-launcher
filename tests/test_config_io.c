@@ -27,6 +27,8 @@ static void test_config_check(void)
     check_config(good, true, "");
     check_config("[Main]\nEntry1=A;a;a\n", false, "default menu");
     check_config("[General]\nDefaultMenu=Home\n[Main]\nEntry1=A;a;a\n", false, "\"Home\" does not exist");
+    check_config("[General]\nDefaultMenu=General\n[Main]\nEntry1=A;a;a\n", false, "\"General\" is a settings section");
+    check_config("[General]\nDefaultMenu=Hotkeys\n[Hotkeys]\nHotkey1=#1B;:quit\n", false, "\"Hotkeys\" is a settings section");
     check_config("[General]\nDefaultMenu=Main\n[Main]\n", false, "has no entries");
     check_config("[General]\nDefaultMenu=Main\n[Main]\nEntry1=OnlyTitle\n", false, "Entry 1 in [Main]");
     check_config("[General]\nDefaultMenu=Main\n[Main]\nEntry1=T;;cmd\n", false, "Entry 1 in [Main]");

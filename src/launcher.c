@@ -51,6 +51,7 @@ static int launcher_load(void);
 static void launcher_unload(void);
 static void free_config_lists(void);
 static int restore_config_backup(const char *path);
+static int launcher_reload(void);
 
 Config config;
 
@@ -800,7 +801,7 @@ static void execute_command(const char *command)
         else if (!strcmp(special_command, SCMD_SLEEP))
             scmd_sleep();
         else if (!strcmp(special_command, SCMD_RELOAD))
-            state.reload_pending = true;
+            launcher_request_reload();
     }
 
     // Launch external application
@@ -1320,8 +1321,16 @@ static int restore_config_backup(const char *path)
     return error;
 }
 
-// A function to re-read config.ini and rebuild the launcher without closing the window
-int launcher_reload()
+// A function to ask for a reload; the main loop runs it at the top of its next iteration
+void launcher_request_reload()
+{
+    state.reload_pending = true;
+}
+
+// A function to re-read config.ini and rebuild the launcher without closing the window.
+// Only call it from the top of the main loop, never from code that is iterating menus,
+// entries, hotkeys, or gamepads: it frees and rebuilds all of them.
+static int launcher_reload()
 {
     log_debug("Reloading configuration from %s", config.config_path);
 

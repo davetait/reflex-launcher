@@ -81,6 +81,8 @@ bool config_check(const IniDoc *doc, char *err, size_t err_len)
         return fail(err, err_len, "No default menu is set ([General] DefaultMenu)");
     if (!ini_doc_has_section(doc, default_menu))
         return fail(err, err_len, "The default menu \"%s\" does not exist", default_menu);
+    if (!is_menu_section(default_menu))
+        return fail(err, err_len, "The default menu \"%s\" is a settings section, not a menu", default_menu);
 
     const char **sections = NULL;
     size_t section_count = ini_doc_sections(doc, &sections);
