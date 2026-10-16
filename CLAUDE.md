@@ -34,6 +34,12 @@ Unit tests cover `ini_doc`, `settings_schema`, and `config_io`, while UI and rel
 - `src/clock.c`: clock/date rendering.
 - `src/debug.c`: logging (`log_debug`/`log_error`/`log_fatal`) and `-d` diagnostics dumps.
 - `src/platform/`: OS layer behind `platform.h` (process launch, shutdown/sleep, file checks, slideshow dir scan). `unix.c` or `win32.c` is compiled into a static `platform` lib. Shared files guard Windows-only code with `#ifdef _WIN32` and Linux/macOS code with `#ifdef PLATFORM_POSIX` (defined by CMake when `UNIX`). Never use `__unix__`: Apple clang doesn't define it. Mac-only differences (e.g. `osascript`/`pmset` power commands in `unix.h`) use `#ifdef __APPLE__`.
+- `src/config_defaults.c`: `default_config`, the built-in defaults copied into `config` at startup and before every reload.
+- `src/ini_doc.*`: line-preserving INI document for editing `config.ini`. Mirrors inih's parsing rules (comments, inline ` ;`, continuations, BOM, duplicate sections) so `ini_doc_get` returns what the launcher loads; edits keep comments and refuse values, keys, or section names inih would read back differently. `ini_doc_save` writes `.tmp`, copies the old file to `.bak`, then replaces it.
+- `src/settings_schema.*`: table of every scalar setting (section, key, type, range, label, help) and `schema_validate()`. The `schema` test fails if a `SETTING_*` key is missing.
+- `src/config_io.*`: `config_check()` (default menu, entries, submenus, hotkeys) and `config_save()` (validate changed values and line length, detect changes on disk, save).
+- `src/platform/fileops.h`: `replace_file()`, an atomic rename-over implemented in `unix.c`/`win32.c`.
+- Reload: `launcher_load()`/`launcher_unload()` in `launcher.c` build and free everything config-dependent (keeping the window and SDL). `launcher_reload()` is static and runs only at the top of the main loop; anything else (e.g. the `:reload` command) calls `launcher_request_reload()`, because a reload frees the menus, entries, and hotkeys the caller may be iterating.
 - `src/external/`: vendored nanosvg. Do not edit; update from upstream instead.
 
 Threads: the slideshow and clock render surfaces on `SDL_CreateThread` workers and signal through `State` flags (`slideshow_background_ready`, `clock_ready`). Only the main thread may touch the `SDL_Renderer`/textures.
@@ -46,7 +52,7 @@ Frame pacing: with `VSync=false`, `draw_screen()` sleeps for `refresh_period - e
 Config keys are not hard-coded in C. To add or rename a setting:
 1. `config/config_settings.cmake`: `set(SETTING_FOO "Foo")`
 2. `config/launcher_config.h.in`: `#define SETTING_FOO "@SETTING_FOO@"` (CMake generates `build/launcher_config.h`)
-3. `src/launcher.h`: add a field to `Config`. `src/launcher.c`: set its default in the `Config config = {…}` initializer.
+3. `src/launcher.h`: add a field to `Config`. `src/config_defaults.c`: set its default in the `const Config default_config = {…}` initializer.
 4. `src/util.c`: parse it in `config_handler` under the right `[Section]`, and clamp it in `validate_settings()` if needed.
 5. `src/settings_schema.c`: add the setting to `settings_schema[]` (the `schema` test fails if you forget).
 6. `config/config.ini.in`: the template for both `build/config.ini` and the installed config. Default app commands and icons differ per platform/RPi (top-level `CMakeLists.txt`).
