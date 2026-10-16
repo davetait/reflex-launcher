@@ -1,18 +1,9 @@
 name: Build
+# Builds only run for version tags (publishing release packages) or on manual dispatch
 on:
   push:
-    paths-ignore:
-      [
-        "**/**.md"
-      ]
-
-  pull_request:
-    branches:
-      - main
-    paths-ignore:
-      [
-        "**/**.md"
-      ]
+    tags:
+      - "v*"
 
   workflow_dispatch:
 
