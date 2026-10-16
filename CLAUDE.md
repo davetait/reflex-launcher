@@ -18,7 +18,13 @@ cmake --build build
 
 Packaging (matches CI): `-DCMAKE_INSTALL_PREFIX=/usr -DPACKAGE=DEB` then `cmake --build build --target package`. `-DPACKAGE=ARCH` only generates a PKGBUILD and stops.
 
-There are no unit tests. CI (`.github/workflows/build.yml`) does not run on pushes or PRs. It runs only on `v*` tags (building Windows, Debian bullseye, macOS, and RPi packages and uploading all but macOS to the GitHub Release) or manually via `gh workflow run Build --ref <branch>`, which builds without releasing. To verify a change, build with `EXTRA_WARNINGS=ON` and run with `-d`, using the generated `build/config.ini`.
+Unit tests (config file editing, settings schema, save checks):
+```bash
+cmake -B build-tests -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
+cmake --build build-tests --target reflex-tests && ctest --test-dir build-tests --output-on-failure
+```
+
+Unit tests cover `ini_doc`, `settings_schema`, and `config_io`, while UI and reload behavior are verified manually. CI (`.github/workflows/build.yml`) does not run on pushes or PRs. It runs only on `v*` tags (building Windows, Debian bullseye, macOS, and RPi packages and uploading all but macOS to the GitHub Release) or manually via `gh workflow run Build --ref <branch>`, which builds without releasing.
 
 ## Architecture
 - `src/launcher.c`: `main()`, SDL init, window creation, the main loop (`SDL_PollEvent` → state updates → `draw_screen()`), input handling, menu navigation, gamepad hot-plug, and `execute_command()` for special commands (`:submenu`, `:back`, `:shutdown`, …; see `SCMD_*` in `launcher.h`). Process-wide state lives in globals defined here (`config`, `state`, `ticks`, `geo`, `renderer`, …). Other files access them with `extern`.
@@ -42,8 +48,9 @@ Config keys are not hard-coded in C. To add or rename a setting:
 2. `config/launcher_config.h.in`: `#define SETTING_FOO "@SETTING_FOO@"` (CMake generates `build/launcher_config.h`)
 3. `src/launcher.h`: add a field to `Config`. `src/launcher.c`: set its default in the `Config config = {…}` initializer.
 4. `src/util.c`: parse it in `config_handler` under the right `[Section]`, and clamp it in `validate_settings()` if needed.
-5. `config/config.ini.in`: the template for both `build/config.ini` and the installed config. Default app commands and icons differ per platform/RPi (top-level `CMakeLists.txt`).
-6. Document it in `docs/configuration.md` (Jekyll site under `docs/`) and note it in `CHANGELOG`.
+5. `src/settings_schema.c`: add the setting to `settings_schema[]` (the `schema` test fails if you forget).
+6. `config/config.ini.in`: the template for both `build/config.ini` and the installed config. Default app commands and icons differ per platform/RPi (top-level `CMakeLists.txt`).
+7. Document it in `docs/configuration.md` (Jekyll site under `docs/`) and note it in `CHANGELOG`.
 
 ## Conventions
 - 4-space indent, `snake_case` functions, `PascalCase` typedefs, `static` for file-local functions with prototypes at the top of the file.

@@ -427,6 +427,9 @@ Shut down the computer.<sup>1</sup>
 #### :restart
 Restart the computer.<sup>1</sup>
 
+#### :reload
+Re-reads the config file and applies it without restarting. If validation fails, logs the error and continues with current settings. If loading fails, restores `config.ini.bak` and saves the broken file as `config.ini.failed`.
+
 #### :sleep
 Put the computer to sleep.<sup>1</sup>
 
