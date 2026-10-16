@@ -25,6 +25,10 @@ set(SOURCES
   config_ui/file_browser.h
   config_ui/ui_controller.c
   config_ui/ui_controller.h
+  config_ui/ui_text.c
+  config_ui/ui_text.h
+  config_ui/ui_render.c
+  config_ui/ui_render.h
 )
 if (UNIX)
   add_executable(${EXECUTABLE_TITLE} ${SOURCES})
