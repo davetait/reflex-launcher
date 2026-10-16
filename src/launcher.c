@@ -17,6 +17,7 @@
 #include "platform/platform.h"
 #include "platform/fileops.h"
 #include "ini_doc.h"
+#include "config_io.h"
 
 static void init_sdl(void);
 static void init_sdl_image(void);
@@ -1188,6 +1189,7 @@ static int launcher_load()
         return 1;
     ticks.main = SDL_GetTicks();
     ticks.last_input = ticks.main;
+    ticks.slideshow_load = ticks.main;
 
     // Gamepad subsystem follows the setting. SDL only announces already-attached
     // devices when the subsystem starts, so on reload connect them here.
@@ -1308,7 +1310,11 @@ static int restore_config_backup(const char *path)
     if (backup == NULL)
         return 1;
     remove(failed_path);
-    replace_file(path, failed_path);
+    if (replace_file(path, failed_path) != 0) {
+        log_error("Could not move %s to %s, not restoring the backup", path, failed_path);
+        ini_doc_free(backup);
+        return 1;
+    }
     int error = ini_doc_save(backup, path);
     ini_doc_free(backup);
     return error;
@@ -1318,6 +1324,21 @@ static int restore_config_backup(const char *path)
 int launcher_reload()
 {
     log_debug("Reloading configuration from %s", config.config_path);
+
+    // Check the new file before tearing down the running launcher
+    IniDoc *doc = ini_doc_load(config.config_path);
+    if (doc == NULL) {
+        log_error("Could not read %s, keeping the current configuration", config.config_path);
+        return 1;
+    }
+    char err[512];
+    bool valid = config_check(doc, err, sizeof(err));
+    ini_doc_free(doc);
+    if (!valid) {
+        log_error("Not reloading %s: %s", config.config_path, err);
+        return 1;
+    }
+
     launcher_unload();
     int error = launcher_load();
     if (error) {
