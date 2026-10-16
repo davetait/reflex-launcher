@@ -87,9 +87,75 @@ static void test_get_basics(void)
     ini_doc_free(doc);
 }
 
+static void check_set(const char *before, const char *section, const char *key,
+                      const char *value, const char *after)
+{
+    IniDoc *doc = ini_doc_parse(before);
+    CHECK(ini_doc_set(doc, section, key, value));
+    char *out = ini_doc_serialize(doc);
+    CHECK_STR(out, after);
+    CHECK_STR(ini_doc_get(doc, section, key), value);
+    free(out);
+    ini_doc_free(doc);
+}
+
+static void test_set(void)
+{
+    // 1. replace in place, keeping neighbours and comments
+    check_set("[General]\n# c\nVSync=true\nX=1\n", "General", "VSync", "false",
+              "[General]\n# c\nVSync=false\nX=1\n");
+    // replacing a multi-line value drops its continuation lines
+    check_set("[A]\nk=one\n  two\nz=1\n", "A", "k", "new", "[A]\nk=new\nz=1\n");
+    // 2. un-comment a commented-out key
+    check_set("[General]\n#FPSLimit=\nVSync=true\n", "General", "FPSLimit", "60",
+              "[General]\nFPSLimit=60\nVSync=true\n");
+    // 3. append after the section's last setting, not after trailing comments
+    check_set("[Clock]\nEnabled=true\n\n# Menus\n[Main]\nEntry1=a;b;c\n", "Clock", "ShowDate", "true",
+              "[Clock]\nEnabled=true\nShowDate=true\n\n# Menus\n[Main]\nEntry1=a;b;c\n");
+    // 3b. create a missing section at the end
+    check_set("[General]\nVSync=true\n", "Clock", "Enabled", "true",
+              "[General]\nVSync=true\n\n[Clock]\nEnabled=true\n");
+    // CRLF files stay CRLF
+    check_set("[General]\r\nVSync=true\r\n", "General", "VSync", "false", "[General]\r\nVSync=false\r\n");
+}
+
+static void test_set_rejects_lossy_values(void)
+{
+    IniDoc *doc = ini_doc_parse("[General]\nStartupCmd=old\n");
+    CHECK(!ini_doc_set(doc, "General", "StartupCmd", "sh -c \"a ; b\""));  // inline comment
+    CHECK(!ini_doc_set(doc, "General", "StartupCmd", "line1\nline2"));
+    CHECK(!ini_doc_set(doc, "General", "StartupCmd", " padded"));
+    CHECK(ini_doc_set(doc, "General", "StartupCmd", "a;b"));              // ';' without a space is fine
+    CHECK(ini_doc_value_is_representable(""));
+    CHECK_STR(ini_doc_get(doc, "General", "StartupCmd"), "a;b");
+    ini_doc_free(doc);
+}
+
+static void test_unset_and_dirty(void)
+{
+    IniDoc *doc = ini_doc_parse("[General]\nVSync=false\n[Clock]\nEnabled=true\n");
+    CHECK(ini_doc_dirty_count(doc) == 0);
+    ini_doc_unset(doc, "General", "VSync");
+    CHECK_STR(ini_doc_get(doc, "General", "VSync"), NULL);
+    char *out = ini_doc_serialize(doc);
+    CHECK_STR(out, "[General]\n#VSync=false\n[Clock]\nEnabled=true\n");
+    free(out);
+    ini_doc_set(doc, "Clock", "Enabled", "false");
+    ini_doc_set(doc, "Clock", "Enabled", "true");   // same key twice -> one dirty entry
+    CHECK(ini_doc_dirty_count(doc) == 2);
+    const char *section, *key;
+    ini_doc_dirty_get(doc, 1, &section, &key);
+    CHECK_STR(section, "Clock");
+    CHECK_STR(key, "Enabled");
+    ini_doc_free(doc);
+}
+
 void suite_ini_doc(void)
 {
     test_round_trip();
     test_get_basics();
     test_get_parity_with_inih();
+    test_set();
+    test_set_rejects_lossy_values();
+    test_unset_and_dirty();
 }

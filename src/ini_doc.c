@@ -46,6 +46,10 @@ static IniLine classify_line(const char *raw, const char *section, const char *p
 static void insert_line(IniDoc *doc, size_t index, IniLine line);
 static void free_line(IniLine *line);
 static bool line_matches(const IniLine *line, const char *section, const char *key);
+static void delete_line(IniDoc *doc, size_t index);
+static void make_key_line(IniLine *line, const char *key, const char *value);
+static size_t section_insert_point(IniDoc *doc, const char *section);
+static void mark_dirty(IniDoc *doc, const char *section, const char *key);
 
 static char *dup_range(const char *start, size_t length)
 {
@@ -239,6 +243,163 @@ const char *ini_doc_get(const IniDoc *doc, const char *section, const char *key)
             value = line->value;
     }
     return value;
+}
+
+static void delete_line(IniDoc *doc, size_t index)
+{
+    free_line(&doc->lines[index]);
+    memmove(doc->lines + index, doc->lines + index + 1, (doc->count - index - 1) * sizeof(IniLine));
+    doc->count--;
+}
+
+// Rewrite a line as an active, unindented "key=value"
+// (an indented key line would be read by inih as a continuation)
+static void make_key_line(IniLine *line, const char *key, const char *value)
+{
+    size_t n = strlen(key) + strlen(value) + 2;
+    char *text = malloc(n);
+    snprintf(text, n, "%s=%s", key, value);
+    free(line->text);
+    line->text = text;
+    char *new_key = strdup(key);
+    free(line->key);
+    line->key = new_key;
+    free(line->value);
+    line->value = strdup(value);
+    line->kind = LINE_KEY;
+}
+
+// Index just after the last setting or header of `section`; creates the section if missing
+static size_t section_insert_point(IniDoc *doc, const char *section)
+{
+    size_t last = (size_t) -1;
+    for (size_t i = 0; i < doc->count; i++) {
+        const IniLine *line = &doc->lines[i];
+        if (strcmp(line->section, section) == 0 &&
+        (line->kind == LINE_SECTION || line->kind == LINE_KEY ||
+        line->kind == LINE_COMMENTED_KEY || line->kind == LINE_CONTINUATION))
+            last = i;
+    }
+    if (last != (size_t) -1)
+        return last + 1;
+    ini_doc_add_section(doc, section);
+    return doc->count;
+}
+
+static void mark_dirty(IniDoc *doc, const char *section, const char *key)
+{
+    for (size_t i = 0; i < doc->dirty_count; i++) {
+        if (strcmp(doc->dirty_sections[i], section) == 0 && strcmp(doc->dirty_keys[i], key) == 0)
+            return;
+    }
+    doc->dirty_sections = realloc(doc->dirty_sections, (doc->dirty_count + 1) * sizeof(char*));
+    doc->dirty_keys = realloc(doc->dirty_keys, (doc->dirty_count + 1) * sizeof(char*));
+    doc->dirty_sections[doc->dirty_count] = strdup(section);
+    doc->dirty_keys[doc->dirty_count] = strdup(key);
+    doc->dirty_count++;
+}
+
+// True if inih would read `value` back unchanged from "key=value"
+bool ini_doc_value_is_representable(const char *value)
+{
+    if (strchr(value, '\n') != NULL || strchr(value, '\r') != NULL)
+        return false;
+    size_t n = strlen(value);
+    if (n > 0 && (isspace((unsigned char) value[0]) || isspace((unsigned char) value[n - 1])))
+        return false;
+    return *find_chars_or_comment(value, NULL) == '\0';
+}
+
+bool ini_doc_set(IniDoc *doc, const char *section, const char *key, const char *value)
+{
+    if (!ini_doc_value_is_representable(value))
+        return false;
+
+    // Replace the last active instance (and drop its continuation lines)
+    for (size_t i = doc->count; i-- > 0;) {
+        IniLine *line = &doc->lines[i];
+        if (line->kind == LINE_KEY && line_matches(line, section, key)) {
+            make_key_line(line, key, value);
+            while (i + 1 < doc->count && doc->lines[i + 1].kind == LINE_CONTINUATION)
+                delete_line(doc, i + 1);
+            mark_dirty(doc, section, key);
+            return true;
+        }
+    }
+
+    // Un-comment a commented-out instance
+    for (size_t i = doc->count; i-- > 0;) {
+        IniLine *line = &doc->lines[i];
+        if (line->kind == LINE_COMMENTED_KEY && line_matches(line, section, key)) {
+            make_key_line(line, key, value);
+            mark_dirty(doc, section, key);
+            return true;
+        }
+    }
+
+    // Append to the section
+    size_t at = section_insert_point(doc, section);
+    IniLine line = { .kind = LINE_KEY, .text = strdup(""), .section = strdup(section) };
+    insert_line(doc, at, line);
+    make_key_line(&doc->lines[at], key, value);
+    mark_dirty(doc, section, key);
+    return true;
+}
+
+void ini_doc_unset(IniDoc *doc, const char *section, const char *key)
+{
+    for (size_t i = 0; i < doc->count; i++) {
+        IniLine *line = &doc->lines[i];
+        if (line->kind == LINE_KEY && line_matches(line, section, key)) {
+            size_t n = strlen(line->text) + 2;
+            char *text = malloc(n);
+            snprintf(text, n, "#%s", line->text);
+            free(line->text);
+            line->text = text;
+            line->kind = LINE_COMMENTED_KEY;
+            mark_dirty(doc, section, key);
+        }
+    }
+}
+
+size_t ini_doc_dirty_count(const IniDoc *doc)
+{
+    return doc->dirty_count;
+}
+
+void ini_doc_dirty_get(const IniDoc *doc, size_t index, const char **section, const char **key)
+{
+    *section = doc->dirty_sections[index];
+    *key = doc->dirty_keys[index];
+}
+
+bool ini_doc_has_section(const IniDoc *doc, const char *section)
+{
+    for (size_t i = 0; i < doc->count; i++) {
+        if (doc->lines[i].kind == LINE_SECTION && strcmp(doc->lines[i].section, section) == 0)
+            return true;
+    }
+    return false;
+}
+
+void ini_doc_add_section(IniDoc *doc, const char *section)
+{
+    if (ini_doc_has_section(doc, section))
+        return;
+    if (doc->count > 0 && doc->lines[doc->count - 1].kind != LINE_BLANK) {
+        IniLine blank = {
+            .kind = LINE_BLANK,
+            .text = strdup(""),
+            .section = strdup(doc->lines[doc->count - 1].section)
+        };
+        insert_line(doc, doc->count, blank);
+    }
+    size_t n = strlen(section) + 3;
+    char *text = malloc(n);
+    snprintf(text, n, "[%s]", section);
+    IniLine header = { .kind = LINE_SECTION, .text = text, .section = strdup(section) };
+    insert_line(doc, doc->count, header);
+    doc->trailing_newline = true;
 }
 
 void ini_doc_free(IniDoc *doc)
