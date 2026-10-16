@@ -315,6 +315,14 @@ void register_exit_hotkey()
     }
 }
 
+// A function to release the exit hotkey before the config is reloaded
+void unregister_exit_hotkey()
+{
+    if (exit_hotkey)
+        UnregisterHotKey(wm_info.info.win.window, 1);
+    exit_hotkey = 0;
+}
+
 // A function to check if the exit hotkey was pressed, and close the active window if so
 void check_exit_hotkey(SDL_SysWMmsg *msg)
 {
