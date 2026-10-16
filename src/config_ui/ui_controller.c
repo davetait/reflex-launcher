@@ -19,6 +19,7 @@ const char *const ui_palette[UI_PALETTE_SIZE] = {
 static const char *const exit_buttons[] = {"Save", "Discard", "Keep editing"};
 static const char *const overwrite_buttons[] = {"Overwrite", "Cancel"};
 static const char *const risk_buttons[] = {"Keep editing", "Save anyway"};
+static const char *const copy_buttons[] = {"Save copy", "Cancel"};
 static const char *const lockout_message = "After saving, Settings can't be opened from the home menu. Save anyway?";
 static const char *const gamepad_message =
     "These gamepad changes may stop your controller from working in the launcher. Save anyway?";
@@ -42,6 +43,8 @@ static UiResult apply_color(UiState *s, UiAction a);
 static UiResult apply_confirm_exit(UiState *s, UiAction a);
 static UiResult apply_confirm_overwrite(UiState *s, UiAction a);
 static UiResult apply_confirm_risk(UiState *s, UiAction a);
+static UiResult apply_confirm_copy(UiState *s, UiAction a);
+static bool offer_copy(UiState *s);
 static UiResult apply_message(UiState *s, UiAction a);
 static void open_editor(UiState *s, const SettingDef *def);
 static void open_choice_list(UiState *s, const SettingDef *def);
@@ -62,6 +65,8 @@ void ui_init(UiState *s, SettingsModel *model)
     s->model = model;
     s->mode = MODE_SECTIONS;
     s->config_reachable_at_open = model != NULL && settings_model_config_reachable(model);
+    if (model != NULL && settings_model_path(model) != NULL && !settings_model_writable(model))
+        put(s->footer, sizeof(s->footer), "This config is read-only \xE2\x80\x94 Save will offer to save a copy");
 }
 
 void ui_init_error(UiState *s, const char *message)
@@ -92,6 +97,7 @@ UiResult ui_apply(UiState *s, UiAction a)
         case MODE_CONFIRM_EXIT: return apply_confirm_exit(s, a);
         case MODE_CONFIRM_OVERWRITE: return apply_confirm_overwrite(s, a);
         case MODE_CONFIRM_RISK: return apply_confirm_risk(s, a);
+        case MODE_CONFIRM_COPY: return apply_confirm_copy(s, a);
         case MODE_MESSAGE: return apply_message(s, a);
     }
     return UI_RESULT_NONE;
@@ -117,6 +123,9 @@ const char *const *ui_dialog_buttons(const UiState *s, size_t *count)
         case MODE_CONFIRM_RISK:
             *count = 2;
             return risk_buttons;
+        case MODE_CONFIRM_COPY:
+            *count = 2;
+            return copy_buttons;
         case MODE_MESSAGE:
             *count = 1;
             return message_buttons;
@@ -245,12 +254,29 @@ static UiResult continue_save(UiState *s, bool force)
             s->list_index = 0;
             s->mode = MODE_CONFIRM_OVERWRITE;
             return UI_RESULT_NONE;
-        case CONFIG_SAVE_INVALID:
         case CONFIG_SAVE_WRITE_FAILED:
+            if (offer_copy(s))
+                return UI_RESULT_NONE;
+            show_message(s, origin, err[0] != '\0' ? err : "Could not save");
+            return UI_RESULT_NONE;
+        case CONFIG_SAVE_INVALID:
         default:
             show_message(s, origin, err[0] != '\0' ? err : "Could not save");
             return UI_RESULT_NONE;
     }
+}
+
+// After a failed write, offers to save to the user's own config instead (Linux and macOS)
+static bool offer_copy(UiState *s)
+{
+    const char *path = settings_model_path(s->model);
+    const char *user_path = settings_model_user_config_path(s->model);
+    if (path == NULL || user_path == NULL || strcmp(path, user_path) == 0)
+        return false;
+    snprintf(s->message, sizeof(s->message), "%s is read-only. Save your changes to %s instead?", path, user_path);
+    s->list_index = 0;
+    s->mode = MODE_CONFIRM_COPY;
+    return true;
 }
 
 // Driving the screen with a gamepad while saving changes that could stop it working:
@@ -735,6 +761,25 @@ static UiResult apply_confirm_overwrite(UiState *s, UiAction a)
     }
     else if (a == UI_SELECT) {
         return continue_save(s, true);
+    }
+    return UI_RESULT_NONE;
+}
+
+static UiResult apply_confirm_copy(UiState *s, UiAction a)
+{
+    if (move_in_list(s, a, 2))
+        return UI_RESULT_NONE;
+    if (a == UI_BACK || (a == UI_SELECT && s->list_index == 1)) {
+        s->mode = s->return_mode;
+        s->list_index = 0;
+    }
+    else if (a == UI_SELECT) {
+        char user_path[PATH_BUF];
+        char err[sizeof(s->message)] = "";
+        put(user_path, sizeof(user_path), settings_model_user_config_path(s->model));
+        if (settings_model_save_as(s->model, user_path, err, sizeof(err)) == CONFIG_SAVE_OK)
+            return UI_RESULT_SAVED;
+        show_message(s, s->return_mode, err[0] != '\0' ? err : "Could not save");
     }
     return UI_RESULT_NONE;
 }

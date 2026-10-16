@@ -223,6 +223,40 @@ static void test_config_reachable(void)
     settings_model_close(m);
 }
 
+static void test_save_as(void)
+{
+    char path[512], copy[600];
+    test_tmp_path(path, sizeof(path), "settings_model_src.ini");
+    test_tmp_path(copy, sizeof(copy), "save_as_dir/nested/config.ini");
+    remove(copy);
+    test_write_file(path, sample);
+    char err[256] = "";
+    SettingsModel *m = settings_model_open(path, err, sizeof(err));
+    CHECK(m != NULL);
+    if (m == NULL)
+        return;
+    // An invalid change is refused before anything is written
+    CHECK(settings_model_set(m, find("General", "DefaultMenu"), "System", err, sizeof(err)));
+    settings_model_reset(m, find("General", "DefaultMenu"));
+    CHECK(settings_model_save_as(m, copy, err, sizeof(err)) == CONFIG_SAVE_INVALID);
+    CHECK(test_read_file(copy) == NULL);
+    CHECK(settings_model_set(m, find("General", "DefaultMenu"), "Main", err, sizeof(err)));
+    CHECK(settings_model_set(m, find("General", "VSync"), "false", err, sizeof(err)));
+    CHECK(settings_model_save_as(m, copy, err, sizeof(err)) == CONFIG_SAVE_OK);
+    CHECK_STR(settings_model_path(m), copy);
+    CHECK(!settings_model_dirty(m));
+    char *text = test_read_file(copy);
+    CHECK(text != NULL && strstr(text, "VSync=false") != NULL && strstr(text, "[System]") != NULL);
+    free(text);
+    text = test_read_file(path);
+    CHECK(text != NULL && strstr(text, "VSync=true") != NULL);
+    free(text);
+    CHECK(settings_model_writable(m));
+    settings_model_set_user_config_path(m, "/x/config.ini");
+    CHECK_STR(settings_model_user_config_path(m), "/x/config.ini");
+    settings_model_close(m);
+}
+
 void suite_settings_model(void)
 {
     test_sections_and_rows();
@@ -235,4 +269,5 @@ void suite_settings_model(void)
     test_step_unsupported_type();
     test_save_round_trip();
     test_config_reachable();
+    test_save_as();
 }

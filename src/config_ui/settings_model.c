@@ -4,8 +4,16 @@
 #include <stdbool.h>
 #include <errno.h>
 #include <ctype.h>
+#ifdef PLATFORM_POSIX
+#include <unistd.h>
+#endif
+#include <SDL.h>
 #include "settings_model.h"
 #include "../ini_doc.h"
+#include "../launcher.h"
+#include <launcher_config.h>
+#include "../platform/platform.h"
+#include "../platform/fileops.h"
 
 #define VALUE_BUF 512
 #define CONFIG_COMMAND ":config"
@@ -14,6 +22,7 @@
 struct settings_model {
     IniDoc *doc;
     char *path;
+    char *user_path;  // where a copy of a read-only config goes, or NULL
 };
 
 static char *copy_text(const char *s);
@@ -28,6 +37,7 @@ static bool step_choice(SettingsModel *m, const SettingDef *def, const char *bas
 static bool step_number(const SettingDef *def, const char *base, bool has_base, int direction, char *out, size_t out_len);
 static long clamp_long(long value, long min, long max);
 static size_t find_menu(const char **sections, size_t count, const char *name);
+static char *default_user_config_path(void);
 
 SettingsModel *settings_model_open(const char *config_path, char *err, size_t err_len)
 {
@@ -49,6 +59,7 @@ SettingsModel *settings_model_open(const char *config_path, char *err, size_t er
     }
     m->doc = doc;
     m->path = path;
+    m->user_path = default_user_config_path();
     return m;
 }
 
@@ -71,6 +82,7 @@ void settings_model_close(SettingsModel *m)
         return;
     ini_doc_free(m->doc);
     free(m->path);
+    free(m->user_path);
     free(m);
 }
 
@@ -316,6 +328,66 @@ ConfigSaveResult settings_model_save(SettingsModel *m, bool force, char *err, si
     return config_save(m->doc, m->path, force, err, err_len);
 }
 
+ConfigSaveResult settings_model_save_as(SettingsModel *m, const char *path, char *err, size_t err_len)
+{
+    char *new_path = copy_text(path);
+    if (new_path == NULL) {
+        put(err, err_len, "Out of memory");
+        return CONFIG_SAVE_WRITE_FAILED;
+    }
+#ifdef PLATFORM_POSIX
+    char *folder = copy_text(path);
+    char *slash = folder != NULL ? strrchr(folder, '/') : NULL;
+    if (slash != NULL && slash != folder) {
+        *slash = '\0';
+        make_directory(folder);
+    }
+    free(folder);
+#endif
+    ConfigSaveResult result = config_save(m->doc, new_path, true, err, err_len);
+    if (result == CONFIG_SAVE_OK) {
+        free(m->path);
+        m->path = new_path;
+    }
+    else
+        free(new_path);
+    return result;
+}
+
+bool settings_model_writable(const SettingsModel *m)
+{
+#ifdef PLATFORM_POSIX
+    if (m->path == NULL)
+        return true;
+    // Saving replaces the file through a temporary file in its folder, so both must be writable
+    char *folder = copy_text(m->path);
+    if (folder == NULL)
+        return true;
+    char *slash = strrchr(folder, '/');
+    if (slash == folder)
+        folder[1] = '\0';
+    else if (slash != NULL)
+        *slash = '\0';
+    bool writable = access(m->path, W_OK) == 0 && access(slash != NULL ? folder : ".", W_OK) == 0;
+    free(folder);
+    return writable;
+#else
+    (void) m;
+    return true;
+#endif
+}
+
+const char *settings_model_user_config_path(const SettingsModel *m)
+{
+    return m->user_path;
+}
+
+void settings_model_set_user_config_path(SettingsModel *m, const char *path)
+{
+    free(m->user_path);
+    m->user_path = path != NULL ? copy_text(path) : NULL;
+}
+
 static char *copy_text(const char *s)
 {
     size_t len = strlen(s);
@@ -394,6 +466,23 @@ static bool parse_percent(const char *s, long *out)
     put(number, sizeof(number), s);
     number[len - 1] = '\0';
     return parse_whole(number, out);
+}
+
+// ~/.config/flex-launcher/config.ini, where the launcher looks before the system-wide config
+static char *default_user_config_path(void)
+{
+#ifdef PLATFORM_POSIX
+    const char *home = home_directory();
+    if (home == NULL)
+        return NULL;
+    size_t len = strlen(home) + sizeof("/.config/" EXECUTABLE_TITLE "/" FILENAME_DEFAULT_CONFIG);
+    char *path = malloc(len);
+    if (path != NULL)
+        snprintf(path, len, "%s/.config/" EXECUTABLE_TITLE "/" FILENAME_DEFAULT_CONFIG, home);
+    return path;
+#else
+    return NULL;
+#endif
 }
 
 // Index of the menu section `name` in `sections`, or `count` if it isn't one

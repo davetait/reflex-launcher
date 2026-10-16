@@ -1,5 +1,6 @@
 #include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
 #include <SDL.h>
 #include "../launcher.h"
 #include "../debug.h"
@@ -141,6 +142,15 @@ static void apply(UiAction action)
 {
     UiResult result = ui_apply(&ui, action);
     if (result == UI_RESULT_SAVED) {
+        // "Save copy" moved the model to the user's config: reload from there
+        const char *saved_path = settings_model_path(ui.model);
+        if (saved_path != NULL && (config.config_path == NULL || strcmp(saved_path, config.config_path) != 0)) {
+            char *copy = strdup(saved_path);
+            if (copy != NULL) {
+                free(config.config_path);
+                config.config_path = copy;
+            }
+        }
         config_ui_close();
         launcher_request_reload();
     }

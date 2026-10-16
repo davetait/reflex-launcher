@@ -46,5 +46,15 @@ bool settings_model_section_dirty(const SettingsModel *m, const char *section);
 bool settings_model_config_reachable(const SettingsModel *m);
 const char *settings_model_path(const SettingsModel *m);
 ConfigSaveResult settings_model_save(SettingsModel *m, bool force, char *err, size_t err_len);
+// Validates like settings_model_save, creates the folder, writes the document to `path`
+// and makes `path` the model's file
+ConfigSaveResult settings_model_save_as(SettingsModel *m, const char *path, char *err, size_t err_len);
+// False if the file (or its folder, where saving writes a temporary file) can't be written.
+// Always true on Windows.
+bool settings_model_writable(const SettingsModel *m);
+// Where a copy of a read-only config goes: ~/.config/flex-launcher/config.ini on Linux and
+// macOS, NULL on Windows or without a home folder. Tests can override it (NULL for none).
+const char *settings_model_user_config_path(const SettingsModel *m);
+void settings_model_set_user_config_path(SettingsModel *m, const char *path);
 
 #endif

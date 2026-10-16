@@ -366,6 +366,7 @@ static void test_save_write_failure_keeps_screen(void)
         rmdir(dir);
         return;
     }
+    settings_model_set_user_config_path(m, path);  // already the user's config: no copy to offer
     ui_init(&s, m);
     focus(&s, "General", "VSync");
     ui_apply(&s, UI_SELECT);
@@ -691,6 +692,78 @@ static void test_files_relative_config_folder(void)
 #endif
 }
 
+static void test_read_only_offers_copy(void)
+{
+#ifdef PLATFORM_POSIX
+    char dir[512], path[600], home[512], user_path[700], err[256] = "";
+    test_tmp_path(dir, sizeof(dir), "ui_copy_dir");
+    test_tmp_path(home, sizeof(home), "ui_copy_home");
+    snprintf(user_path, sizeof(user_path), "%s/.config/flex-launcher/config.ini", home);
+    remove(user_path);
+    mkdir(dir, 0700);
+    chmod(dir, 0700);
+    snprintf(path, sizeof(path), "%s/config.ini", dir);
+    test_write_file(path, sample);
+    chmod(path, 0444);
+    chmod(dir, 0500);
+    FILE *probe = fopen(path, "a");
+    if (probe != NULL) {
+        // Running as a user that ignores permissions (root): the failure can't be provoked
+        fclose(probe);
+    }
+    else {
+        SettingsModel *m = settings_model_open(path, err, sizeof(err));
+        CHECK(m != NULL);
+        if (m != NULL) {
+            settings_model_set_user_config_path(m, user_path);
+            UiState s;
+            ui_init(&s, m);
+            CHECK_STR(s.footer, "This config is read-only \xE2\x80\x94 Save will offer to save a copy");
+            focus(&s, "General", "VSync");
+            ui_apply(&s, UI_SELECT);
+            CHECK(ui_apply(&s, UI_SAVE) == UI_RESULT_NONE);
+            CHECK(s.mode == MODE_CONFIRM_COPY);
+            char expected[1600];
+            snprintf(expected, sizeof(expected), "%s is read-only. Save your changes to %s instead?", path, user_path);
+            CHECK_STR(s.message, expected);
+            CHECK(s.list_index == 0);
+            size_t count = 0;
+            const char *const *buttons = ui_dialog_buttons(&s, &count);
+            CHECK(count == 2);
+            if (count == 2) {
+                CHECK_STR(buttons[0], "Save copy");
+                CHECK_STR(buttons[1], "Cancel");
+            }
+            // Cancel keeps the edits
+            ui_apply(&s, UI_RIGHT);
+            CHECK(ui_apply(&s, UI_SELECT) == UI_RESULT_NONE);
+            CHECK(s.mode == MODE_ROWS);
+            CHECK(settings_model_dirty(s.model));
+            ui_apply(&s, UI_SAVE);
+            CHECK(ui_apply(&s, UI_BACK) == UI_RESULT_NONE);
+            CHECK(s.mode == MODE_ROWS);
+            // Save copy writes the user's config, which the model now uses
+            ui_apply(&s, UI_SAVE);
+            CHECK(s.mode == MODE_CONFIRM_COPY);
+            CHECK(ui_apply(&s, UI_SELECT) == UI_RESULT_SAVED);
+            CHECK_STR(settings_model_path(s.model), user_path);
+            CHECK(!settings_model_dirty(s.model));
+            char *text = test_read_file(user_path);
+            CHECK(text != NULL && strstr(text, "VSync=false") != NULL);
+            free(text);
+            text = test_read_file(path);
+            CHECK(text != NULL && strstr(text, "VSync=true") != NULL);
+            free(text);
+            ui_free(&s);
+        }
+    }
+    chmod(dir, 0700);
+    chmod(path, 0644);
+    remove(path);
+    rmdir(dir);
+#endif
+}
+
 static void test_error_screen_closes(void)
 {
     UiState s;
@@ -727,4 +800,5 @@ void suite_ui_controller(void)
     test_both_confirms();
     test_files_focus_current_file();
     test_files_relative_config_folder();
+    test_read_only_offers_copy();
 }
