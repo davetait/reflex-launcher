@@ -18,7 +18,7 @@ cmake --build build
 
 Packaging (matches CI): `-DCMAKE_INSTALL_PREFIX=/usr -DPACKAGE=DEB` then `cmake --build build --target package`. `-DPACKAGE=ARCH` only generates a PKGBUILD and stops.
 
-There are no unit tests. CI (`.github/workflows/build.yml`) only checks that Windows, Debian bullseye, macOS, and RPi (qemu chroot) builds succeed. To verify a change, build with `EXTRA_WARNINGS=ON` and run with `-d`, using the generated `build/config.ini`.
+There are no unit tests. CI (`.github/workflows/build.yml`) does not run on pushes or PRs. It runs only on `v*` tags (building Windows, Debian bullseye, macOS, and RPi packages and uploading all but macOS to the GitHub Release) or manually via `gh workflow run Build --ref <branch>`, which builds without releasing. To verify a change, build with `EXTRA_WARNINGS=ON` and run with `-d`, using the generated `build/config.ini`.
 
 ## Architecture
 - `src/launcher.c`: `main()`, SDL init, window creation, the main loop (`SDL_PollEvent` → state updates → `draw_screen()`), input handling, menu navigation, gamepad hot-plug, and `execute_command()` for special commands (`:submenu`, `:back`, `:shutdown`, …; see `SCMD_*` in `launcher.h`). Process-wide state lives in globals defined here (`config`, `state`, `ticks`, `geo`, `renderer`, …). Other files access them with `extern`.
