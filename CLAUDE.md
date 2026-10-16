@@ -24,7 +24,7 @@ cmake -B build-tests -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
 cmake --build build-tests --target reflex-tests && ctest --test-dir build-tests --output-on-failure
 ```
 
-Unit tests cover `ini_doc`, `settings_schema`, and `config_io`, while UI and reload behavior are verified manually. CI (`.github/workflows/build.yml`) does not run on pushes or PRs. It runs only on `v*` tags (building Windows, Debian bullseye, macOS, and RPi packages and uploading all but macOS to the GitHub Release) or manually via `gh workflow run Build --ref <branch>`, which builds without releasing.
+Unit tests cover `ini_doc`, `settings_schema`, and `config_io`, while UI and reload behavior are verified manually. CI (`.github/workflows/build.yml`) does not run on pushes or PRs. It runs only on `v*` tags (building Windows, Debian bullseye, macOS, and RPi packages and uploading all but macOS to the GitHub Release) or manually via `gh workflow run Build --ref <branch>`, which builds without releasing. To verify a change, build with `EXTRA_WARNINGS=ON` and run with `-d`, using the generated `build/config.ini`.
 
 ## Architecture
 - `src/launcher.c`: `main()`, SDL init, window creation, the main loop (`SDL_PollEvent` → state updates → `draw_screen()`), input handling, menu navigation, gamepad hot-plug, and `execute_command()` for special commands (`:submenu`, `:back`, `:shutdown`, …; see `SCMD_*` in `launcher.h`). Process-wide state lives in globals defined here (`config`, `state`, `ticks`, `geo`, `renderer`, …). Other files access them with `extern`.

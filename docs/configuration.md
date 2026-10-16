@@ -428,7 +428,7 @@ Shut down the computer.<sup>1</sup>
 Restart the computer.<sup>1</sup>
 
 #### :reload
-Re-reads the config file and applies it without restarting. If validation fails, logs the error and continues with current settings. If loading fails, restores `config.ini.bak` and saves the broken file as `config.ini.failed`.
+Re-reads the config file and applies it without restarting. Before changing anything, it reads the file and checks its structure: a default menu that exists and has entries, entries in `title;icon;command` form, submenu targets that exist, and hotkeys in `#XX;command` form. If the check fails, the error is logged and the current settings stay in effect. If a file that passed the check still fails to load (for example, a missing font), the launcher restores `config.ini.bak` (written by the in-app settings editor), keeps the broken file as `config.ini.failed`, and logs the error. If there is no backup to restore, the launcher exits with an error.
 
 #### :sleep
 Put the computer to sleep.<sup>1</sup>
