@@ -30,19 +30,35 @@ SettingsModel *settings_model_open(const char *config_path, char *err, size_t er
 {
     IniDoc *doc = ini_doc_load(config_path);
     if (doc == NULL) {
-        snprintf(err, err_len, "Could not read %s", config_path);
+        if (err != NULL && err_len > 0)
+            snprintf(err, err_len, "Could not read %s", config_path);
         return NULL;
     }
     SettingsModel *m = calloc(1, sizeof(*m));
+    char *path = copy_text(config_path);
+    if (m == NULL || path == NULL) {
+        free(m);
+        free(path);
+        ini_doc_free(doc);
+        if (err != NULL && err_len > 0)
+            snprintf(err, err_len, "Out of memory");
+        return NULL;
+    }
     m->doc = doc;
-    m->path = copy_text(config_path);
+    m->path = path;
     return m;
 }
 
 SettingsModel *settings_model_open_text(const char *text)
 {
     SettingsModel *m = calloc(1, sizeof(*m));
+    if (m == NULL)
+        return NULL;
     m->doc = ini_doc_parse(text);
+    if (m->doc == NULL) {
+        free(m);
+        return NULL;
+    }
     return m;
 }
 
@@ -171,24 +187,38 @@ void settings_model_reset(SettingsModel *m, const SettingDef *def)
 size_t settings_model_choices(const SettingsModel *m, const SettingDef *def, char ***out)
 {
     *out = NULL;
-    size_t count = 0;
+    const char *const *source = NULL;
+    const char **sections = NULL;
+    size_t total = 0;
     if (def->type == SET_CHOICE && def->choices != NULL) {
-        while (def->choices[count] != NULL)
-            count++;
-        *out = malloc((count + 1) * sizeof(char *));
-        for (size_t i = 0; i < count; i++)
-            (*out)[i] = copy_text(def->choices[i]);
-        return count;
+        source = def->choices;
+        while (source[total] != NULL)
+            total++;
     }
-    if (def->type == SET_MENU_REF) {
-        const char **sections = NULL;
-        size_t total = ini_doc_sections(m->doc, &sections);
-        *out = malloc((total + 1) * sizeof(char *));
-        for (size_t i = 0; i < total; i++) {
-            if (is_menu_section(m, sections[i]))
-                (*out)[count++] = copy_text(sections[i]);
+    else if (def->type == SET_MENU_REF) {
+        total = ini_doc_sections(m->doc, &sections);
+        source = sections;
+    }
+    if (source == NULL)
+        return 0;
+
+    char **list = malloc((total + 1) * sizeof(char *));
+    if (list == NULL)
+        return 0;
+    size_t count = 0;
+    for (size_t i = 0; i < total; i++) {
+        if (def->type == SET_MENU_REF && !is_menu_section(m, source[i]))
+            continue;
+        list[count] = copy_text(source[i]);
+        if (list[count] == NULL) {
+            while (count > 0)
+                free(list[--count]);
+            free(list);
+            return 0;
         }
+        count++;
     }
+    *out = list;
     return count;
 }
 
@@ -215,6 +245,8 @@ static char *copy_text(const char *s)
 {
     size_t len = strlen(s);
     char *copy = malloc(len + 1);
+    if (copy == NULL)
+        return NULL;
     memcpy(copy, s, len + 1);
     return copy;
 }
@@ -235,16 +267,9 @@ static bool equals_ignore_case(const char *a, const char *b)
     return *a == *b;
 }
 
-// Mirrors config_io: any section that isn't a settings section or [Hotkeys] is a menu
 static bool is_menu_section(const SettingsModel *m, const char *section)
 {
-    if (!ini_doc_has_section(m->doc, section) || strcmp(section, "Hotkeys") == 0)
-        return false;
-    for (size_t i = 0; schema_sections[i] != NULL; i++) {
-        if (strcmp(schema_sections[i], section) == 0)
-            return false;
-    }
-    return true;
+    return ini_doc_has_section(m->doc, section) && config_is_menu_section(section);
 }
 
 static bool value_is_valid(const SettingsModel *m, const SettingDef *def, const char *value)

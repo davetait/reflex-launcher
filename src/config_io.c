@@ -17,7 +17,6 @@
 #endif
 
 static bool fail(char *err, size_t err_len, const char *format, ...);
-static bool is_menu_section(const char *section);
 static char *entry_command(const char *value);
 static bool hotkey_is_valid(const char *value);
 
@@ -31,7 +30,7 @@ static bool fail(char *err, size_t err_len, const char *format, ...)
 }
 
 // Mirrors config_handler(): any section that isn't a settings section or [Hotkeys] is a menu
-static bool is_menu_section(const char *section)
+bool config_is_menu_section(const char *section)
 {
     if (section[0] == '\0' || strcmp(section, "Hotkeys") == 0)
         return false;
@@ -81,7 +80,7 @@ bool config_check(const IniDoc *doc, char *err, size_t err_len)
         return fail(err, err_len, "No default menu is set ([General] DefaultMenu)");
     if (!ini_doc_has_section(doc, default_menu))
         return fail(err, err_len, "The default menu \"%s\" does not exist", default_menu);
-    if (!is_menu_section(default_menu))
+    if (!config_is_menu_section(default_menu))
         return fail(err, err_len, "The default menu \"%s\" is a settings section, not a menu", default_menu);
 
     const char **sections = NULL;
@@ -97,7 +96,7 @@ bool config_check(const IniDoc *doc, char *err, size_t err_len)
                     ok = fail(err, err_len, "Hotkey %zu in [Hotkeys] must look like #1B;command", i + 1);
             }
         }
-        else if (is_menu_section(section)) {
+        else if (config_is_menu_section(section)) {
             if (count == 0 && strcmp(section, default_menu) == 0)
                 ok = fail(err, err_len, "The default menu \"%s\" has no entries", section);
             for (size_t i = 0; ok && i < count; i++) {
