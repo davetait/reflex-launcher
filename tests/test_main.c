@@ -7,12 +7,14 @@ int test_failures = 0;
 extern FILE *log_file;
 
 void suite_ini_doc(void);
+void suite_schema(void);
 
 static const struct {
     const char *name;
     void (*run)(void);
 } suites[] = {
     {"ini_doc", suite_ini_doc},
+    {"schema", suite_schema},
 };
 
 void test_tmp_path(char *buf, size_t len, const char *name)

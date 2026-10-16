@@ -24,7 +24,7 @@ extern Hotkey          *hotkeys;
 Menu                   *menu  = NULL;
 Entry                  *entry = NULL;
 
-static const char *mode_settings[][5] = {
+const char *mode_settings[][5] = {
     {"Color", "Image", "Slideshow", "Transparent", NULL}, // Background Mode
     {"Blank", "None", "Quit", NULL, NULL},                // OnLaunch
     {"Truncated", "Shrink", "None", NULL, NULL},          // OversizeMode

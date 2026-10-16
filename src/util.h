@@ -27,6 +27,8 @@ int convert_percent(const char *string, int max_value);
 const char *get_mode_setting(int type, int value);
 int utf8_length(const char *string);
 unsigned int calculate_width(int buttons, int icon_spacing, int icon_size, int highlight_padding);
+extern const char *mode_settings[][5];
+
 bool hex_to_color(const char *string, SDL_Color *color);
 bool convert_bool(const char *string, bool *setting);
 bool is_percent(const char *string);
