@@ -45,6 +45,7 @@ static bool parse_commented_key(const char *s, char **key, char **value);
 static IniLine classify_line(const char *raw, const char *section, const char *prev_key);
 static void insert_line(IniDoc *doc, size_t index, IniLine line);
 static void free_line(IniLine *line);
+static bool line_matches(const IniLine *line, const char *section, const char *key);
 
 static char *dup_range(const char *start, size_t length)
 {
@@ -221,6 +222,23 @@ char *ini_doc_serialize(const IniDoc *doc)
     }
     *p = '\0';
     return out;
+}
+
+static bool line_matches(const IniLine *line, const char *section, const char *key)
+{
+    return line->key != NULL && strcmp(line->section, section) == 0 && strcmp(line->key, key) == 0;
+}
+
+// Last active value wins, like config_handler(); continuation lines count as values
+const char *ini_doc_get(const IniDoc *doc, const char *section, const char *key)
+{
+    const char *value = NULL;
+    for (size_t i = 0; i < doc->count; i++) {
+        const IniLine *line = &doc->lines[i];
+        if ((line->kind == LINE_KEY || line->kind == LINE_CONTINUATION) && line_matches(line, section, key))
+            value = line->value;
+    }
+    return value;
 }
 
 void ini_doc_free(IniDoc *doc)
