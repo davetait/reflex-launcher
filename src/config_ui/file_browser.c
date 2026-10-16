@@ -4,6 +4,11 @@
 #include <stdbool.h>
 #include <ctype.h>
 #include <SDL.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <sys/stat.h>
+#endif
 #include "file_browser.h"
 #include "../launcher.h"
 #include "../util.h"
@@ -37,6 +42,7 @@ static bool has_extension(const char *name, const char *const *extensions);
 static bool file_matches(FileFilter filter, const char *name);
 static void free_items(Item *items, size_t count);
 static bool load_directory(FileBrowser *fb, const char *path);
+static bool is_existing_file(const char *path);
 static void set_error(char *err, size_t err_len, const char *path);
 
 static bool is_separator(char c)
@@ -140,6 +146,18 @@ static bool file_matches(FileFilter filter, const char *name)
     }
 }
 
+// True if path exists and is not a folder
+static bool is_existing_file(const char *path)
+{
+#ifdef _WIN32
+    DWORD attributes = GetFileAttributesA(path);
+    return attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY);
+#else
+    struct stat info;
+    return stat(path, &info) == 0 && !S_ISDIR(info.st_mode);
+#endif
+}
+
 static void free_items(Item *items, size_t count)
 {
     for (size_t i = 0; i < count; i++) {
@@ -162,7 +180,8 @@ static bool load_directory(FileBrowser *fb, const char *path)
     size_t entry_count;
     if (strlen(path) >= sizeof(fb->dir) || list_directory(path, &entries, &entry_count) != 0)
         return false;
-    qsort(entries, entry_count, sizeof(DirEntry), compare_dir_entries);
+    if (entry_count > 1)
+        qsort(entries, entry_count, sizeof(DirEntry), compare_dir_entries);
 
     Item *items = malloc((entry_count + 2) * sizeof(Item));
     if (items == NULL) {
@@ -213,8 +232,8 @@ FileBrowser *file_browser_open(const char *const *candidates, size_t candidate_c
         strcpy(path, candidates[i]);
         if (load_directory(fb, path))
             return fb;
-        // Not a folder we can list: a file path starts in its folder
-        if (strip_last_component(path) && load_directory(fb, path))
+        // A file path starts in its folder. A folder that can't be listed moves on to the next candidate.
+        if (is_existing_file(path) && strip_last_component(path) && load_directory(fb, path))
             return fb;
     }
     if (err != NULL && err_len > 0) {
@@ -266,15 +285,21 @@ FileBrowserResult file_browser_activate(FileBrowser *fb, size_t index, char *out
     char path[MAX_PATH_CHARS];
     switch (fb->items[index].kind) {
         case ENTRY_USE_FOLDER:
-            snprintf(out_path, out_len, "%s", fb->dir);
-            return FB_CHOSEN;
-        case ENTRY_FILE:
-            if (!join_path(path, sizeof(path), fb->dir, fb->items[index].name)) {
+            if (out_path == NULL || strlen(fb->dir) >= out_len) {
                 if (err != NULL && err_len > 0)
-                    snprintf(err, err_len, "Path is too long");
+                    snprintf(err, err_len, "Path too long");
                 return FB_ERROR;
             }
-            snprintf(out_path, out_len, "%s", path);
+            strcpy(out_path, fb->dir);
+            return FB_CHOSEN;
+        case ENTRY_FILE:
+            if (out_path == NULL || !join_path(path, sizeof(path), fb->dir, fb->items[index].name)
+                || strlen(path) >= out_len) {
+                if (err != NULL && err_len > 0)
+                    snprintf(err, err_len, "Path too long");
+                return FB_ERROR;
+            }
+            strcpy(out_path, path);
             return FB_CHOSEN;
         case ENTRY_PARENT:
             strcpy(path, fb->dir);
@@ -284,7 +309,7 @@ FileBrowserResult file_browser_activate(FileBrowser *fb, size_t index, char *out
         default:
             if (!join_path(path, sizeof(path), fb->dir, fb->items[index].name)) {
                 if (err != NULL && err_len > 0)
-                    snprintf(err, err_len, "Path is too long");
+                    snprintf(err, err_len, "Path too long");
                 return FB_ERROR;
             }
             break;

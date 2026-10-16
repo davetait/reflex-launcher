@@ -5,6 +5,7 @@
 #define MAKE_DIR(p) _mkdir(p)
 #else
 #include <sys/stat.h>
+#include <unistd.h>
 #define MAKE_DIR(p) mkdir((p), 0755)
 #endif
 #include <stdbool.h>
@@ -132,6 +133,92 @@ static void test_open_falls_back_and_fails_cleanly(void)
     CHECK(err[0] != '\0');
 }
 
+static void test_missing_candidate_does_not_use_parent(void)
+{
+    char err[200] = "", missing[1100], pics[1100];
+    snprintf(missing, sizeof(missing), "%s%smissing", root, PATH_SEPARATOR);
+    snprintf(pics, sizeof(pics), "%s%sPics", root, PATH_SEPARATOR);
+    const char *candidates[] = {missing, pics};
+    FileBrowser *fb = file_browser_open(candidates, 2, FILTER_ANY, err, sizeof(err));
+    CHECK(fb != NULL);
+    if (fb == NULL)
+        return;
+    CHECK_STR(file_browser_dir(fb), pics);
+    file_browser_free(fb);
+}
+
+static void test_failed_navigation_stays_put(void)
+{
+    char err[200] = "", out[1001] = "", doomed[1100];
+    snprintf(doomed, sizeof(doomed), "%s%sdoomed", root, PATH_SEPARATOR);
+    MAKE_DIR(doomed);
+    const char *candidates[] = {root};
+    FileBrowser *fb = file_browser_open(candidates, 1, FILTER_ANY, err, sizeof(err));
+    CHECK(fb != NULL);
+    if (fb == NULL)
+        return;
+    size_t index = find_entry(fb, "doomed");
+    size_t count = file_browser_count(fb);
+#ifdef _WIN32
+    _rmdir(doomed);
+#else
+    rmdir(doomed);
+#endif
+    CHECK(file_browser_activate(fb, index, out, sizeof(out), err, sizeof(err)) == FB_ERROR);
+    CHECK(strncmp(err, "Can't open", 10) == 0);
+    CHECK_STR(file_browser_dir(fb), root);
+    CHECK(file_browser_count(fb) == count);
+    file_browser_free(fb);
+}
+
+static void test_parent_from_nested_folder(void)
+{
+    char err[200] = "", out[1001] = "", nested[1100];
+    snprintf(nested, sizeof(nested), "%s%sfonts", root, PATH_SEPARATOR);
+    const char *candidates[] = {nested};
+    FileBrowser *fb = file_browser_open(candidates, 1, FILTER_ANY, err, sizeof(err));
+    CHECK(fb != NULL);
+    if (fb == NULL)
+        return;
+    CHECK_STR(file_browser_dir(fb), nested);
+    CHECK(file_browser_activate(fb, 0, out, sizeof(out), err, sizeof(err)) == FB_NAVIGATED);
+    CHECK_STR(file_browser_dir(fb), root);
+    file_browser_free(fb);
+}
+
+static void test_any_and_dirs_filters(void)
+{
+    char err[200] = "";
+    const char *candidates[] = {root};
+    FileBrowser *fb = file_browser_open(candidates, 1, FILTER_ANY, err, sizeof(err));
+    CHECK(fb != NULL);
+    if (fb != NULL) {
+        CHECK(file_browser_entry(fb, find_entry(fb, "notes.txt")).kind == ENTRY_FILE);
+        file_browser_free(fb);
+    }
+    fb = file_browser_open(candidates, 1, FILTER_DIRS, err, sizeof(err));
+    CHECK(fb != NULL);
+    if (fb != NULL) {
+        for (size_t i = 0; i < file_browser_count(fb); i++)
+            CHECK(file_browser_entry(fb, i).kind != ENTRY_FILE);
+        file_browser_free(fb);
+    }
+}
+
+static void test_path_too_long_for_output(void)
+{
+    char err[200] = "", out[4];
+    const char *candidates[] = {root};
+    FileBrowser *fb = file_browser_open(candidates, 1, FILTER_DIRS, err, sizeof(err));
+    CHECK(fb != NULL);
+    if (fb == NULL)
+        return;
+    CHECK(file_browser_activate(fb, 0, out, sizeof(out), err, sizeof(err)) == FB_ERROR);
+    CHECK_STR(err, "Path too long");
+    CHECK(file_browser_activate(fb, 0, NULL, 0, err, sizeof(err)) == FB_ERROR);
+    file_browser_free(fb);
+}
+
 void suite_file_browser(void)
 {
     make_tree();
@@ -140,4 +227,9 @@ void suite_file_browser(void)
     test_navigate_and_choose();
     test_file_candidate_uses_its_folder();
     test_open_falls_back_and_fails_cleanly();
+    test_missing_candidate_does_not_use_parent();
+    test_failed_navigation_stays_put();
+    test_parent_from_nested_folder();
+    test_any_and_dirs_filters();
+    test_path_too_long_for_output();
 }
