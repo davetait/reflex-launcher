@@ -53,6 +53,7 @@
 #define SCMD_RESTART ":restart"
 #define SCMD_SLEEP ":sleep"
 #define SCMD_RELOAD ":reload"
+#define SCMD_CONFIG ":config"
 
 typedef enum {
     MODE_SETTING_BACKGROUND,

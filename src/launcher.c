@@ -18,6 +18,7 @@
 #include "platform/fileops.h"
 #include "ini_doc.h"
 #include "config_io.h"
+#include "config_ui/config_ui.h"
 
 static void init_sdl(void);
 static void init_sdl_image(void);
@@ -38,9 +39,12 @@ static void move_right(void);
 static void load_submenu(const char *submenu);
 static void load_back_menu(Menu *menu);
 static void draw_screen(void);
+static void draw_menu(void);
 static void handle_keypress(SDL_Keysym *key);
 static void execute_command(const char *command);
 static void poll_gamepad(void);
+static bool gamepad_control_pressed(GamepadControl *control);
+static bool any_gamepad_control_pressed(void);
 static void init_gamepad(Gamepad **gamepad, int device_index);
 static void connect_gamepad(int device_index, bool open, bool raise_error);
 static void disconnect_gamepad(int id, bool disconnect, bool remove);
@@ -84,6 +88,11 @@ SDL_DisplayMode display_mode;
 TextInfo title_info;
 Ticks ticks;
 Geometry geo;
+
+// Input that closed the Settings screen must not reach the launcher: held gamepad
+// controls and key repeats are ignored until released. Kept outside State, which a reload clears.
+static bool gamepad_wait_release = false;
+static bool keyboard_wait_release = false;
 Uint32 refresh_period;
 Uint32 delay_period;
 Uint32 repeat_period;
@@ -266,6 +275,9 @@ static void launcher_unload()
     Slideshowhread = NULL;
     SDL_WaitThread(clock_thread, NULL);
     clock_thread = NULL;
+
+    // The Settings screen's text cache holds textures from the renderer destroyed below
+    config_ui_close();
 
 #ifdef _WIN32
     unregister_exit_hotkey();
@@ -696,6 +708,48 @@ static void load_back_menu(Menu *menu)
     load_menu(menu->back, false, config.reset_on_back);
 }
 
+// A function to draw the menu layer: scroll indicators, clock, highlight, buttons and screensaver
+static void draw_menu(void)
+{
+    // Draw scroll indicators
+    if (config.scroll_indicators &&
+    (current_menu->page*config.max_buttons + (unsigned int) geo.num_buttons) <= (current_menu->num_entries - 1))
+        SDL_RenderCopy(renderer, scroll->texture, NULL, &scroll->rect_right);
+
+    if (config.scroll_indicators && current_menu->page > 0)
+        SDL_RenderCopyEx(renderer, scroll->texture, NULL, &scroll->rect_left, 0, NULL, SDL_FLIP_HORIZONTAL);
+
+    // Draw clock
+    if (config.clock_enabled) {
+        SDL_RenderCopy(renderer, clk->time_texture, NULL, &clk->time_rect);
+        if (config.clock_show_date)
+            SDL_RenderCopy(renderer, clk->date_texture, NULL, &clk->date_rect);
+    }
+
+    // Draw highlight
+    if (config.highlight)
+        SDL_RenderCopy(renderer,
+            highlight->texture,
+            NULL,
+            &highlight->rect
+        );
+
+    // Draw buttons
+    Entry *entry = current_menu->root_entry;
+    SDL_Texture *icon;
+    for (int i = 0; i < geo.num_buttons; i++) {
+        icon = (entry->icon_selected != NULL && i == (int) current_menu->highlight_position) ? entry->icon_selected : entry->icon;
+        SDL_RenderCopy(renderer, icon, NULL, &entry->icon_rect);
+        if (config.titles_enabled)
+            SDL_RenderCopy(renderer, entry->title_texture, NULL, &entry->text_rect);
+        entry = entry-> next;
+    }
+
+    // Draw screensaver
+    if (state.screensaver_active)
+        SDL_RenderCopy(renderer, screensaver->texture, NULL, NULL);
+}
+
 // A function to update the screen with all visible textures
 static void draw_screen()
 {
@@ -712,43 +766,11 @@ static void draw_screen()
         if (config.background_overlay)
             SDL_RenderCopy(renderer, background_overlay, NULL, NULL);
 
-        // Draw scroll indicators
-        if (config.scroll_indicators &&
-        (current_menu->page*config.max_buttons + (unsigned int) geo.num_buttons) <= (current_menu->num_entries - 1))
-            SDL_RenderCopy(renderer, scroll->texture, NULL, &scroll->rect_right);
-
-        if (config.scroll_indicators && current_menu->page > 0)
-            SDL_RenderCopyEx(renderer, scroll->texture, NULL, &scroll->rect_left, 0, NULL, SDL_FLIP_HORIZONTAL);
-
-        // Draw clock
-        if (config.clock_enabled) {
-            SDL_RenderCopy(renderer, clk->time_texture, NULL, &clk->time_rect);
-            if (config.clock_show_date)
-                SDL_RenderCopy(renderer, clk->date_texture, NULL, &clk->date_rect);
-        }
-
-        // Draw highlight
-        if (config.highlight)
-            SDL_RenderCopy(renderer,
-                highlight->texture,
-                NULL,
-                &highlight->rect
-            );
-
-        // Draw buttons
-        Entry *entry = current_menu->root_entry;
-        SDL_Texture *icon;
-        for (int i = 0; i < geo.num_buttons; i++) {
-            icon = (entry->icon_selected != NULL && i == (int) current_menu->highlight_position) ? entry->icon_selected : entry->icon;
-            SDL_RenderCopy(renderer, icon, NULL, &entry->icon_rect);
-            if (config.titles_enabled)
-                SDL_RenderCopy(renderer, entry->title_texture, NULL, &entry->text_rect);
-            entry = entry-> next;
-        }
-
-        // Draw screensaver
-        if (state.screensaver_active)
-            SDL_RenderCopy(renderer, screensaver->texture, NULL, NULL);
+        // The Settings screen replaces the menu, clock and screensaver
+        if (config_ui_is_open())
+            config_ui_draw();
+        else
+            draw_menu();
     }
     else
         SDL_RenderFillRect(renderer, NULL);
@@ -802,6 +824,8 @@ static void execute_command(const char *command)
             scmd_sleep();
         else if (!strcmp(special_command, SCMD_RELOAD))
             launcher_request_reload();
+        else if (!strcmp(special_command, SCMD_CONFIG))
+            config_ui_open();
     }
 
     // Launch external application
@@ -907,41 +931,54 @@ static void disconnect_gamepad(int id, bool disconnect, bool remove)
     }
 }
 
+// A function to check whether any connected gamepad is pressing a control
+static bool gamepad_control_pressed(GamepadControl *control)
+{
+    for (Gamepad *gamepad = gamepads; gamepad != NULL; gamepad = gamepad->next) {
+
+        // Check if axis value exceeds dead zone
+        if (control->type == TYPE_AXIS_POS || control->type == TYPE_AXIS_NEG) {
+            int value_multiplier = control->type == TYPE_AXIS_POS ? 1 : -1; // Handles positive or negative axis
+            if (value_multiplier*SDL_GameControllerGetAxis(gamepad->controller, control->index) > GAMEPAD_DEADZONE)
+                return true;
+        }
+
+        // Check buttons
+        else if (control->type == TYPE_BUTTON) {
+            if (SDL_GameControllerGetButton(gamepad->controller, control->index))
+                return true;
+        }
+    }
+    return false;
+}
+
+// A function to check whether any bound gamepad control is pressed
+static bool any_gamepad_control_pressed(void)
+{
+    for (GamepadControl *i = gamepad_controls; i != NULL; i = i->next) {
+        if (gamepad_control_pressed(i))
+            return true;
+    }
+    return false;
+}
+
 // A function to poll the connected gamepad for commands
 static void poll_gamepad()
 {
-    int value_multiplier; // Handles positive or negative axis
-    bool pressed;
+    // After the Settings screen closes, ignore controls until all are released,
+    // so the button that closed it doesn't also run its launcher binding
+    if (gamepad_wait_release) {
+        if (any_gamepad_control_pressed())
+            return;
+        gamepad_wait_release = false;
+    }
+
     for (GamepadControl *i = gamepad_controls; i != NULL; i = i->next) {
-        pressed = false;
-        for (Gamepad *gamepad = gamepads; gamepad != NULL; gamepad = gamepad->next) {
-
-            // Check if axis value exceeds dead zone
-            if (i->type == TYPE_AXIS_POS || i->type == TYPE_AXIS_NEG) {
-                if (i->type == TYPE_AXIS_POS)
-                    value_multiplier = 1;
-                else if (i->type == TYPE_AXIS_NEG)
-                    value_multiplier = -1;
-                if (value_multiplier*SDL_GameControllerGetAxis(gamepad->controller, i->index) > GAMEPAD_DEADZONE) {
-                    i->repeat++;
-                    pressed = true;
-                    break;
-                }
-            }
-
-            // Check buttons
-            else if (i->type == TYPE_BUTTON) {
-                if (SDL_GameControllerGetButton(gamepad->controller, i->index)) {
-                    i->repeat++;
-                    pressed = true;
-                    break;
-                }
-            }
-        }
-        if (!pressed) {
+        if (!gamepad_control_pressed(i)) {
             i->repeat = 0;
             continue;
         }
+        i->repeat++;
 
         // Execute command if first press or valid repeat
         if (i->repeat == 1) {
@@ -954,6 +991,10 @@ static void poll_gamepad()
             execute_command(i->cmd);
             i->repeat -= repeat_period;
         }
+
+        // A command that opened the Settings screen takes over input
+        if (config_ui_is_open())
+            return;
     }
 }
 
@@ -1394,12 +1435,28 @@ int main(int argc, char *argv[])
             ticks.main = SDL_GetTicks();
         }
         while (SDL_PollEvent(&event)) {
+
+            // While the Settings screen is open it gets all keyboard and gamepad input
+            if (config_ui_is_open()) {
+                if (event.type == SDL_KEYDOWN || event.type == SDL_TEXTINPUT ||
+                event.type == SDL_CONTROLLERBUTTONDOWN || event.type == SDL_CONTROLLERAXISMOTION) {
+                    ticks.last_input = ticks.main;
+                    config_ui_handle_event(&event);
+                    continue;
+                }
+                if (event.type == SDL_MOUSEBUTTONDOWN)
+                    continue;
+            }
+
             switch(event.type) {
                 case SDL_QUIT:
                     quit(EXIT_SUCCESS);
                     break;
 
                 case SDL_KEYDOWN:
+                    if (keyboard_wait_release && event.key.repeat)
+                        break;
+                    keyboard_wait_release = false;
                     ticks.last_input = ticks.main;
                     handle_keypress(&event.key.keysym);
                     break;
@@ -1468,12 +1525,18 @@ int main(int argc, char *argv[])
         }
 
         // Post-event loop updates
+        if (config_ui_is_open()) {
+            ticks.last_input = ticks.main;
+            gamepad_wait_release = true;
+            keyboard_wait_release = true;
+            config_ui_update(ticks.main);
+        }
         if (!(state.application_running || state.application_launching)) {
-            if (gamepads != NULL)
+            if (gamepads != NULL && !config_ui_is_open())
                 poll_gamepad();
             if (config.background_mode == BACKGROUND_SLIDESHOW)
                 update_slideshow();
-            if (config.screensaver_enabled)
+            if (config.screensaver_enabled && !config_ui_is_open())
                 update_screensaver();
             if (config.clock_enabled)
                 update_clock(false);

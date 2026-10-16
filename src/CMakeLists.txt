@@ -29,6 +29,8 @@ set(SOURCES
   config_ui/ui_text.h
   config_ui/ui_render.c
   config_ui/ui_render.h
+  config_ui/config_ui.c
+  config_ui/config_ui.h
 )
 if (UNIX)
   add_executable(${EXECUTABLE_TITLE} ${SOURCES})
