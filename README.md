@@ -7,7 +7,7 @@
 # Reflex Launcher
 </div>
 
-> **Reflex Launcher is a fork of [Flex Launcher](https://github.com/complexlogic/flex-launcher) by complexlogic.** It adds macOS support. The executable, package, and config paths still use the original `flex-launcher` name, and the prebuilt Windows and Linux packages linked below are upstream Flex Launcher releases.
+> **Reflex Launcher is a fork of [Flex Launcher](https://github.com/complexlogic/flex-launcher) by complexlogic.** Where upstream is in maintenance mode, Reflex Launcher is under active development and adds new features on top of it, starting with macOS support. The executable, package, and config paths still use the original `flex-launcher` name.
 
 <details open>
   <summary>Table of Contents</summary>
@@ -48,40 +48,31 @@ Reflex Launcher is compatible with Windows, Linux (including Raspberry Pi device
 https://user-images.githubusercontent.com/95071366/208355237-11f00cbb-9cc3-436b-98f7-8de350e584a7.mp4
 
 ## Installation
-Upstream Flex Launcher executables are available for Windows 64 bit, Linux x86-64, and Raspberry Pi. They do not include this fork's changes. macOS is build-from-source only. You can also compile the program yourself using the [compilation guide](docs/compilation.md).
+Reflex Launcher does not publish prebuilt packages yet, so it must be compiled from source on all platforms. The [compilation guide](docs/compilation.md) has full instructions.
 
 ### Windows
-Download the win64 .zip file from the [latest release](https://github.com/complexlogic/flex-launcher/releases/latest) and extract the contents to a directory of your choice. The launcher should be run on an up-to-date Windows 10 system, or Windows 11.
+Build with Visual Studio and vcpkg as described in the [Windows compilation guide](docs/compilation.md#windows). The launcher should be run on an up-to-date Windows 10 system, or Windows 11.
 
 ### Linux
-Binary packages are available on the [release page](https://github.com/complexlogic/flex-launcher/releases) for APT and pacman based distributions. You may use the commands below to install.
-
-#### APT-based x86-64 Distributions (Debian, Ubuntu, etc.)
-This package is compatible with Debian Bullseye and later, Ubuntu 21.04 and later.
+Install the dependencies for your distribution (see the [Linux compilation guide](docs/compilation.md#linux) for pacman and DNF), then build:
 ```bash
-wget https://github.com/complexlogic/flex-launcher/releases/download/v2.2/flex-launcher_2.2_amd64.deb
-sudo apt install ./flex-launcher_2.2_amd64.deb
-```
-#### Pacman-based x86-64 Distributions (Arch, Manjaro, etc.)
-```bash
-wget https://github.com/complexlogic/flex-launcher/releases/download/v2.2/flex-launcher-2.2-1-x86_64.pkg.tar.zst
-sudo pacman -U flex-launcher-2.2-1-x86_64.pkg.tar.zst
-```
-#### Raspberry Pi
-This package is compatible with Raspbian Bullseye and later, 64 bit only.
-```bash
-wget https://github.com/complexlogic/flex-launcher/releases/download/v2.2/flex-launcher_2.2_arm64.deb
-sudo apt install ./flex-launcher_2.2_arm64.deb
+sudo apt install build-essential git cmake pkg-config libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libinih-dev
+git clone https://github.com/davetait/reflex-launcher.git
+cd reflex-launcher
+cmake -B build -DCMAKE_BUILD_TYPE=Release   # add -DRPI=1 on Raspberry Pi
+cmake --build build
+./build/flex-launcher
 ```
 #### Copying Assets to Home Directory
-The Linux packages install a default config file and assets to `/usr/share/flex-launcher`. It is strongly recommended to *not* edit this config file directly, as it will be overwritten if you upgrade to a later version. Instead, copy these files to your home directory and edit it there.
+Optionally, install the program, default config file, and assets under `/usr/local`. It is strongly recommended to *not* edit the installed config file directly, as it will be overwritten if you upgrade to a later version. Instead, copy these files to your home directory and edit it there.
 ```bash
-cp -r /usr/share/flex-launcher ~/.config
-sed -i "s|/usr/share/flex-launcher|$HOME/.config/flex-launcher|g" ~/.config/flex-launcher/config.ini
+sudo cmake --install build
+cp -r /usr/local/share/flex-launcher ~/.config
+sed -i "s|/usr/local/share/flex-launcher|$HOME/.config/flex-launcher|g" ~/.config/flex-launcher/config.ini
 ```
 
 ### macOS
-No prebuilt macOS package is available, so Reflex Launcher must be compiled from source. Install [Homebrew](https://brew.sh) and the Xcode Command Line Tools (`xcode-select --install`), then install the dependencies:
+Install [Homebrew](https://brew.sh) and the Xcode Command Line Tools (`xcode-select --install`), then install the dependencies:
 ```bash
 brew install cmake pkgconf sdl2 sdl2_image sdl2_ttf inih
 ```
@@ -109,7 +100,7 @@ Reflex Launcher uses an INI file to configure the menus and settings. Upon  star
 1. The current working directory
 2. The directory containing the `flex-launcher` executable
 3. Linux and macOS only: `~/.config/flex-launcher`
-4. Linux and macOS only: `<install prefix>/share/flex-launcher` (`/usr/share/flex-launcher` for the Linux packages)
+4. Linux and macOS only: `<install prefix>/share/flex-launcher` (`/usr/local/share/flex-launcher` by default)
 
 If your config file is in one of the above locations, the launcher can be started simply by double clicking the executable file or adding it to autostart. If your config file is in a non-standard location, you must specify the path via command line argument:
 ```bash
@@ -134,7 +125,7 @@ flex-launcher -d
 This will output a logfile named `flex-launcher.log` in the same directory as `flex-launcher.exe` on Windows, and in `~/.local/share/flex-launcher` on Linux and macOS. 
 
 ## Development Status
-Upstream Flex Launcher has reached a mature state and is maintained for bugfixes and dependency updates only; its author is focusing on a [new HTPC launcher project](https://github.com/complexlogic/big-launcher). Reflex Launcher builds on upstream and adds macOS support.
+Upstream Flex Launcher has reached a mature state and is maintained for bugfixes and dependency updates only; its author is focusing on a [new HTPC launcher project](https://github.com/complexlogic/big-launcher). Reflex Launcher continues active development on top of upstream, adding new features and platform support (starting with macOS).
 
 ## Documentation
 Here is a list of available documentation:
