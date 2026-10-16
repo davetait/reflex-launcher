@@ -3,7 +3,9 @@
 #include <string.h>
 #include <stdbool.h>
 #include <ctype.h>
+#include <sys/stat.h>
 #include "ini_doc.h"
+#include "platform/fileops.h"
 
 typedef enum {
     LINE_BLANK,
@@ -51,6 +53,9 @@ static void make_key_line(IniLine *line, const char *key, const char *value);
 static size_t section_insert_point(IniDoc *doc, const char *section);
 static void mark_dirty(IniDoc *doc, const char *section, const char *key);
 static bool is_list_line(const IniLine *line, const char *section);
+static char *read_file_bytes(const char *path);
+static bool stat_file(const char *path, long long *size, long long *mtime);
+static int backup_file(const char *from, const char *to);
 
 static char *dup_range(const char *start, size_t length)
 {
@@ -536,4 +541,116 @@ void ini_doc_rename_section(IniDoc *doc, const char *from, const char *to)
         }
     }
     free(from_copy);
+}
+
+static char *read_file_bytes(const char *path)
+{
+    FILE *file = fopen(path, "rb");
+    if (file == NULL)
+        return NULL;
+    fseek(file, 0, SEEK_END);
+    long size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    if (size < 0) {
+        fclose(file);
+        return NULL;
+    }
+    char *buffer = malloc((size_t) size + 1);
+    size_t read = fread(buffer, 1, (size_t) size, file);
+    fclose(file);
+    if (read != (size_t) size) {
+        free(buffer);
+        return NULL;
+    }
+    buffer[size] = '\0';
+    return buffer;
+}
+
+static bool stat_file(const char *path, long long *size, long long *mtime)
+{
+    struct stat st;
+    if (stat(path, &st) != 0)
+        return false;
+    *size = (long long) st.st_size;
+    *mtime = (long long) st.st_mtime;
+    return true;
+}
+
+// Copies `from` to `to` if `from` exists. Returns 0 on success or when there is nothing to copy.
+static int backup_file(const char *from, const char *to)
+{
+    struct stat st;
+    if (stat(from, &st) != 0)
+        return 0;
+    char *bytes = read_file_bytes(from);
+    if (bytes == NULL)
+        return -1;
+    size_t length = (size_t) st.st_size;
+    FILE *file = fopen(to, "wb");
+    if (file == NULL) {
+        free(bytes);
+        return -1;
+    }
+    bool ok = fwrite(bytes, 1, length, file) == length;
+    ok = fclose(file) == 0 && ok;
+    free(bytes);
+    return ok ? 0 : -1;
+}
+
+IniDoc *ini_doc_load(const char *path)
+{
+    char *text = read_file_bytes(path);
+    if (text == NULL)
+        return NULL;
+    IniDoc *doc = ini_doc_parse(text);
+    free(text);
+    doc->has_stat = stat_file(path, &doc->file_size, &doc->file_mtime);
+    return doc;
+}
+
+int ini_doc_save(const IniDoc *doc, const char *path)
+{
+    char *text = ini_doc_serialize(doc);
+    size_t n = strlen(path) + 5;
+    char *tmp = malloc(n);
+    char *bak = malloc(n);
+    snprintf(tmp, n, "%s.tmp", path);
+    snprintf(bak, n, "%s.bak", path);
+
+    int status = -1;
+    FILE *file = fopen(tmp, "wb");
+    if (file != NULL) {
+        size_t length = strlen(text);
+        bool ok = fwrite(text, 1, length, file) == length;
+        ok = fflush(file) == 0 && ok;
+        ok = fclose(file) == 0 && ok;
+        if (ok && backup_file(path, bak) == 0 && replace_file(tmp, path) == 0)
+            status = 0;
+        if (status != 0)
+            remove(tmp);
+    }
+    free(text);
+    free(tmp);
+    free(bak);
+    return status;
+}
+
+bool ini_doc_changed_on_disk(const IniDoc *doc, const char *path)
+{
+    if (!doc->has_stat)
+        return false;
+    long long size, mtime;
+    if (!stat_file(path, &size, &mtime))
+        return true;
+    return size != doc->file_size || mtime != doc->file_mtime;
+}
+
+void ini_doc_mark_saved(IniDoc *doc, const char *path)
+{
+    doc->has_stat = stat_file(path, &doc->file_size, &doc->file_mtime);
+    for (size_t i = 0; i < doc->dirty_count; i++) {
+        free(doc->dirty_sections[i]);
+        free(doc->dirty_keys[i]);
+    }
+    doc->dirty_count = 0;
 }

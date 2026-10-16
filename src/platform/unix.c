@@ -1,4 +1,5 @@
 #include <unistd.h>
+#include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -13,6 +14,7 @@
 #include "../util.h"
 #include "../debug.h"
 #include "platform.h"
+#include "fileops.h"
 #include "slideshow.h"
 
 static int desktop_handler(void *user, const char *section, const char *name, const char *value);
@@ -238,4 +240,10 @@ void print_usage()
     printf("  -d,   --debug      Enable debug messages.\n");
     printf("  -h,   --help       Show this help message.\n");
     printf("  -v,   --version    Print version information.\n");
+}
+
+// A function to atomically replace a file
+int replace_file(const char *from, const char *to)
+{
+    return rename(from, to) == 0 ? 0 : -1;
 }

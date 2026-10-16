@@ -10,6 +10,7 @@
 #include "../launcher.h"
 #include <launcher_config.h>
 #include "platform.h"
+#include "fileops.h"
 #include "../util.h"
 #include "../debug.h"
 #include "slideshow.h"
@@ -337,4 +338,11 @@ static UINT sdl_to_win32_keycode(SDL_Keycode keycode)
             return table[i].win;
     }
     return 0;
+}
+
+// A function to atomically replace a file
+// (ANSI API on purpose: paths come from fopen()-compatible strings elsewhere in the app)
+int replace_file(const char *from, const char *to)
+{
+    return MoveFileExA(from, to, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) ? 0 : -1;
 }

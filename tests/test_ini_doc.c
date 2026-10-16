@@ -1,6 +1,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>
+#endif
 #include <ini.h>
 #include "test.h"
 #include "ini_doc.h"
@@ -341,6 +345,55 @@ static void test_set_list_spread_and_zero(void)
     ini_doc_free(doc);
 }
 
+static void test_load_save(void)
+{
+    char dir[512], path[512], bak[512], tmp[512];
+    test_tmp_path(dir, sizeof(dir), "dir with space");
+#ifdef _WIN32
+    _mkdir(dir);
+#else
+    mkdir(dir, 0700);
+#endif
+    snprintf(path, sizeof(path), "%s/config.ini", dir);
+    snprintf(bak, sizeof(bak), "%s.bak", path);
+    snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+    remove(bak);
+    test_write_file(path, "[General]\r\nVSync=true\r\n");
+
+    IniDoc *doc = ini_doc_load(path);
+    CHECK(doc != NULL);
+    CHECK(!ini_doc_changed_on_disk(doc, path));
+    ini_doc_set(doc, "General", "VSync", "false");
+    CHECK(ini_doc_save(doc, path) == 0);
+    ini_doc_mark_saved(doc, path);
+    CHECK(ini_doc_dirty_count(doc) == 0);
+
+    char *saved = test_read_file(path);
+    char *backup = test_read_file(bak);
+    CHECK_STR(saved, "[General]\r\nVSync=false\r\n");
+    CHECK_STR(backup, "[General]\r\nVSync=true\r\n");
+    CHECK(test_read_file(tmp) == NULL);
+    free(saved);
+    free(backup);
+
+    // another program edits the file -> detected (size changes)
+    test_write_file(path, "[General]\nVSync=true\nWrapEntries=true\n");
+    CHECK(ini_doc_changed_on_disk(doc, path));
+
+    // a doc parsed from memory never reports a disk change
+    IniDoc *memory = ini_doc_parse("[A]\n");
+    CHECK(!ini_doc_changed_on_disk(memory, path));
+    ini_doc_free(memory);
+
+    // saving into a missing directory fails cleanly and leaves no .tmp
+    char missing[512];
+    test_tmp_path(missing, sizeof(missing), "no/such/dir/config.ini");
+    CHECK(ini_doc_save(doc, missing) != 0);
+    ini_doc_free(doc);
+
+    CHECK(ini_doc_load(missing) == NULL);
+}
+
 void suite_ini_doc(void)
 {
     test_round_trip();
@@ -354,6 +407,7 @@ void suite_ini_doc(void)
     test_get_list_mirrors_config_handler();
     test_set_list();
     test_sections();
+    test_load_save();
     test_set_list_reorder_aliasing();
     test_set_list_spread_and_zero();
 }
