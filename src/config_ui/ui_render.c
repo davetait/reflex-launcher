@@ -14,6 +14,13 @@
 
 typedef enum { ALIGN_LEFT, ALIGN_CENTER, ALIGN_RIGHT } Align;
 
+// The part of a text field's value that fits, split at the cursor
+typedef struct {
+    char before[TEXT_BUF];  // visible text before the cursor
+    char after[TEXT_BUF];   // visible text after the cursor
+    bool clipped_start, clipped_end;
+} TextWindow;
+
 // Everything one frame needs, with sizes already scaled to the screen
 typedef struct {
     SDL_Renderer *r;
@@ -44,8 +51,9 @@ static const SDL_Color COLOR_KEY = {255, 255, 255, 24};
 static const SDL_Color COLOR_TRACK = {255, 255, 255, 40};
 static const SDL_Color COLOR_FIELD = {0, 0, 0, 110};
 static const SDL_Color COLOR_RULE = {255, 255, 255, 30};
+static const SDL_Color COLOR_SWATCH_EDGE = {255, 255, 255, 90};
 
-static const char *const HINTS = "Select: change   \xE2\x86\x90/\xE2\x86\x92: adjust   Y/Del: reset   "
+static const char *const HINTS = "Select: change   Left/Right: adjust   Y/Del: reset   "
                                  "Start/Ctrl+S: save   B/Esc: back";
 static const char *const CLOSE_HINTS = "Select or B/Esc: close";
 static const char *const EXIT_MESSAGE = "You have unsaved changes. Save them before leaving?";
@@ -64,6 +72,8 @@ static const char *utf8_skip(const char *s, size_t chars);
 static void fit_text(const Frame *f, UiFont font, const char *text, int max_w, bool keep_end, char *out, size_t len);
 static size_t wrap_text(const Frame *f, UiFont font, const char *text, int max_w, char lines[][VALUE_BUF], size_t max_lines);
 static size_t first_visible(size_t focus, size_t visible);
+static int window_width(const Frame *f, const char *value, size_t from, size_t to, size_t total);
+static TextWindow text_window(const Frame *f, const char *value, size_t cursor, int room);
 static void draw_scrollbar(const Frame *f, int x, int y, int h, size_t first, size_t visible, size_t count);
 static bool parse_color(const char *text, SDL_Color *out);
 
@@ -102,8 +112,11 @@ void ui_render(SDL_Renderer *r, UiTextCache *c, const UiState *s, int w, int h)
     f.footer_y = h - f.m - 2 * f.footer_line;
     f.bar = h >= 1000 ? 3 : 2;
 
+    // The launcher relies on a persistent draw color (SDL_RenderClear) and blend mode
     SDL_BlendMode old_mode;
+    Uint8 old_r, old_g, old_b, old_a;
     SDL_GetRenderDrawBlendMode(r, &old_mode);
+    SDL_GetRenderDrawColor(r, &old_r, &old_g, &old_b, &old_a);
     SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
 
     fill_rect(&f, 0, 0, w, h, COLOR_PANEL);
@@ -139,6 +152,7 @@ void ui_render(SDL_Renderer *r, UiTextCache *c, const UiState *s, int w, int h)
     draw_footer(&f);
 
     SDL_SetRenderDrawBlendMode(r, old_mode);
+    SDL_SetRenderDrawColor(r, old_r, old_g, old_b, old_a);
 }
 
 // ---------------------------------------------------------------- primitives
@@ -364,6 +378,55 @@ static size_t wrap_text(const Frame *f, UiFont font, const char *text, int max_w
     if (line[0] != '\0' && count < max_lines)
         snprintf(lines[count++], VALUE_BUF, "%s", line);
     return count;
+}
+
+// Width of characters [from, to) of value, plus an ellipsis for each clipped side
+static int window_width(const Frame *f, const char *value, size_t from, size_t to, size_t total)
+{
+    char piece[TEXT_BUF];
+    const char *a = utf8_skip(value, from), *b = utf8_skip(value, to);
+    snprintf(piece, sizeof(piece), "%.*s", (int) (b - a), a);
+    int ellipsis = ui_text_width(f->c, UI_FONT_BODY, ELLIPSIS);
+    return ui_text_width(f->c, UI_FONT_BODY, piece) + (from > 0 ? ellipsis : 0) + (to < total ? ellipsis : 0);
+}
+
+// Picks the visible characters: as many before the cursor as fit, then as many after it
+static TextWindow text_window(const Frame *f, const char *value, size_t cursor, int room)
+{
+    TextWindow win;
+    size_t total = utf8_chars(value);
+    char head[TEXT_BUF];
+    snprintf(head, sizeof(head), "%.*s", (int) cursor, value);
+    size_t cursor_char = utf8_chars(head);
+
+    // Smallest start that fits, reserving the end ellipsis if text follows the cursor
+    size_t lo = 0, hi = cursor_char;
+    while (lo < hi) {
+        size_t mid = (lo + hi) / 2;
+        if (window_width(f, value, mid, cursor_char, total) <= room)
+            hi = mid;
+        else
+            lo = mid + 1;
+    }
+    size_t start = lo;
+    // Largest end that still fits (width grows as end grows)
+    lo = cursor_char;
+    hi = total;
+    while (lo < hi) {
+        size_t mid = (lo + hi + 1) / 2;
+        if (window_width(f, value, start, mid, total) <= room)
+            lo = mid;
+        else
+            hi = mid - 1;
+    }
+    size_t end = lo;
+
+    const char *a = utf8_skip(value, start), *c = utf8_skip(value, cursor_char), *b = utf8_skip(value, end);
+    snprintf(win.before, sizeof(win.before), "%.*s", (int) (c - a), a);
+    snprintf(win.after, sizeof(win.after), "%.*s", (int) (b - c), c);
+    win.clipped_start = start > 0;
+    win.clipped_end = end < total;
+    return win;
 }
 
 static size_t first_visible(size_t focus, size_t visible)
@@ -705,24 +768,22 @@ static void draw_text_entry(const Frame *f)
     SDL_Rect inner;
     int y = draw_card(f, content_h, s->editing != NULL ? s->editing->label : NULL, &inner);
 
-    // Field, scrolled so the cursor stays visible
+    // Field: only the window of the value that fits is rendered (a whole long value could
+    // exceed the GPU's maximum texture width), with the cursor kept visible
     SDL_Rect field = {inner.x, y, inner.w, field_h};
     fill_round(f, field, f->body / 5, COLOR_FIELD);
     outline_round(f, field, f->body / 5, 2, COLOR_ACCENT);
-    const char *value = text_input_value(t);
-    size_t cursor = text_input_cursor(t);
-    char before[TEXT_BUF];
-    snprintf(before, sizeof(before), "%.*s", (int) cursor, value);
     int pad = f->body / 2;
-    int text_room = field.w - 2 * pad;
-    int cursor_x = ui_text_width(f->c, UI_FONT_BODY, before);
-    int offset = cursor_x > text_room - f->bar ? cursor_x - (text_room - f->bar) : 0;
-    SDL_Rect clip = {field.x + pad, field.y, text_room, field.h};
-    SDL_RenderSetClipRect(f->r, &clip);
-    draw_text(f, UI_FONT_BODY, value, COLOR_WHITE, field.x + pad - offset, field.y + field_h / 2, ALIGN_LEFT);
-    SDL_RenderSetClipRect(f->r, NULL);
-    fill_rect(f, field.x + pad + cursor_x - offset, field.y + (field_h - f->body * 11 / 10) / 2, f->bar,
-              f->body * 11 / 10, COLOR_WHITE);
+    TextWindow win = text_window(f, text_input_value(t), text_input_cursor(t), field.w - 2 * pad - f->bar);
+    int x = field.x + pad, cy = field.y + field_h / 2;
+    if (win.clipped_start)
+        x += draw_text(f, UI_FONT_BODY, ELLIPSIS, COLOR_DIM, x, cy, ALIGN_LEFT);
+    int cursor_x = x + ui_text_width(f->c, UI_FONT_BODY, win.before);
+    x += draw_text(f, UI_FONT_BODY, win.before, COLOR_WHITE, x, cy, ALIGN_LEFT);
+    x += draw_text(f, UI_FONT_BODY, win.after, COLOR_WHITE, x, cy, ALIGN_LEFT);
+    if (win.clipped_end)
+        draw_text(f, UI_FONT_BODY, ELLIPSIS, COLOR_DIM, x, cy, ALIGN_LEFT);
+    fill_rect(f, cursor_x, field.y + (field_h - f->body * 11 / 10) / 2, f->bar, f->body * 11 / 10, COLOR_WHITE);
     y += field_h + f->body * 6 / 10;
 
     // Key grid: full rows span the width; shorter rows keep the key width and centre
@@ -800,7 +861,7 @@ static void draw_color(const Frame *f)
         SDL_Color color;
         if (parse_color(ui_palette[i], &color))
             fill_round(f, swatch, f->body / 6, color);
-        outline_round(f, swatch, f->body / 6, 1, COLOR_TRACK);
+        outline_round(f, swatch, f->body / 6, 2, COLOR_SWATCH_EDGE);
         if (i == s->list_index) {
             SDL_Rect outer = {swatch.x - ring - 1, swatch.y - ring - 1, cell + 2 * (ring + 1), cell + 2 * (ring + 1)};
             outline_round(f, outer, f->body / 6 + ring, f->bar, COLOR_WHITE);

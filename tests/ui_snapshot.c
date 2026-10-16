@@ -81,6 +81,19 @@ int main(int argc, char *argv[])
     snapshot(&s, 1920, 1080, "05-text.png");
     act(&s, UI_BACK);
 
+    // A value far wider than the field, cursor at the end
+    go_to(&s, "General", "StartupCmd");
+    act(&s, UI_SELECT);
+    if (s.mode != MODE_TEXT)
+        fail("text entry did not open");
+    char long_value[320] = "";
+    while (strlen(long_value) + 30 < 300)
+        strcat(long_value, "/media/library/movies/part-x/");
+    strcat(long_value, "start.sh");
+    ui_type(&s, long_value);
+    snapshot(&s, 1920, 1080, "12-text-long.png");
+    act(&s, UI_BACK);
+
     go_to(&s, "Layout", "IconSize");
     act(&s, UI_SELECT);
     if (s.mode != MODE_TEXT)
@@ -155,6 +168,15 @@ static void snapshot(const UiState *s, int w, int h, const char *name)
     SDL_SetRenderDrawColor(r, 40, 70, 110, 255);
     SDL_RenderClear(r);
     ui_render(r, cache, s, w, h);
+    // The launcher clears with a persistent draw color, so ui_render must restore it
+    Uint8 cr, cg, cb, ca;
+    SDL_BlendMode mode;
+    SDL_GetRenderDrawColor(r, &cr, &cg, &cb, &ca);
+    SDL_GetRenderDrawBlendMode(r, &mode);
+    if (cr != 40 || cg != 70 || cb != 110 || ca != 255 || mode != SDL_BLENDMODE_NONE) {
+        fprintf(stderr, "reflex-ui-snapshot: ui_render changed the draw color or blend mode\n");
+        exit(1);
+    }
     SDL_RenderPresent(r);
 
     char path[1024];
