@@ -12,4 +12,13 @@ plugins:
   - jekyll-remote-theme
   - jekyll-seo-tag
 
-
+# Jekyll 3 (GitHub Pages) replaces its default exclude list with this one, so the defaults are repeated
+exclude:
+  - superpowers  # internal design notes, not part of the site
+  - Gemfile
+  - Gemfile.lock
+  - node_modules
+  - vendor/bundle/
+  - vendor/cache/
+  - vendor/gems/
+  - vendor/ruby/

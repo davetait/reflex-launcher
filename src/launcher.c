@@ -15,11 +15,14 @@
 #include "debug.h"
 #include "clock.h"
 #include "platform/platform.h"
+#include "platform/fileops.h"
+#include "ini_doc.h"
+#include "config_io.h"
 
 static void init_sdl(void);
 static void init_sdl_image(void);
 static void create_window(void);
-static void init_sdl_ttf(void);
+static int load_title_font(void);
 static int load_menu(Menu *menu, bool set_back_menu, bool reset_position);
 static int load_menu_by_name(const char *menu_name, bool set_back_menu, bool reset_position);
 static void update_slideshow(void);
@@ -43,117 +46,14 @@ static void connect_gamepad(int device_index, bool open, bool raise_error);
 static void disconnect_gamepad(int id, bool disconnect, bool remove);
 static void open_controller(Gamepad *gamepad, bool raise_error);
 static void cleanup(void);
+static int create_renderer(void);
+static int launcher_load(void);
+static void launcher_unload(void);
+static void free_config_lists(void);
+static int restore_config_backup(const char *path);
+static int launcher_reload(void);
 
-// Initialize default settings
-Config config = {
-    .default_menu                     = NULL,
-    .background_image                 = NULL,
-    .slideshow_directory              = NULL,
-    .title_font_path                  = NULL,
-    .vsync                            = true,
-    .fps_limit                        = -1,
-    .application_timeout              = DEFAULT_APPLICATION_TIMEOUT * 1000,
-    .titles_enabled                   = DEFAULT_TITLES_ENABLED,
-    .title_font_size                  = DEFAULT_FONT_SIZE,
-    .title_font_color.r               = DEFAULT_TITLE_FONT_COLOR_R,
-    .title_font_color.g               = DEFAULT_TITLE_FONT_COLOR_G,
-    .title_font_color.b               = DEFAULT_TITLE_FONT_COLOR_B,
-    .title_font_color.a               = DEFAULT_TITLE_FONT_COLOR_A,
-    .title_shadows                    = DEFAULT_TITLE_SHADOWS,
-    .title_shadow_color.r             = DEFAULT_TITLE_SHADOW_COLOR_R,
-    .title_shadow_color.g             = DEFAULT_TITLE_SHADOW_COLOR_G,
-    .title_shadow_color.b             = DEFAULT_TITLE_SHADOW_COLOR_B,
-    .title_shadow_color.a             = DEFAULT_TITLE_SHADOW_COLOR_A,
-    .background_mode                  = BACKGROUND_COLOR,
-    .background_color.r               = DEFAULT_BACKGROUND_COLOR_R,
-    .background_color.g               = DEFAULT_BACKGROUND_COLOR_G,
-    .background_color.b               = DEFAULT_BACKGROUND_COLOR_B,
-    .chroma_key_color.r               = DEFAULT_CHROMA_KEY_COLOR_R,
-    .chroma_key_color.g               = DEFAULT_CHROMA_KEY_COLOR_G,
-    .chroma_key_color.b               = DEFAULT_CHROMA_KEY_COLOR_B,
-    .chroma_key_color.a               = DEFAULT_CHROMA_KEY_COLOR_A,
-    .background_color.a               = 0xFF,
-    .background_overlay               = DEFAULT_BACKGROUND_OVERLAY,
-    .background_overlay_color.r       = DEFAULT_BACKGROUND_OVERLAY_COLOR_R,
-    .background_overlay_color.g       = DEFAULT_BACKGROUND_OVERLAY_COLOR_G,
-    .background_overlay_color.b       = DEFAULT_BACKGROUND_OVERLAY_COLOR_B,
-    .background_overlay_color.a       = DEFAULT_BACKGROUND_OVERLAY_COLOR_A,
-    .background_overlay_opacity[0]    = '\0',
-    .highlight                        = true,
-    .icon_size                        = DEFAULT_ICON_SIZE,
-    .highlight_fill_color.r           = DEFAULT_HIGHLIGHT_FILL_COLOR_R,
-    .highlight_fill_color.g           = DEFAULT_HIGHLIGHT_FILL_COLOR_G,
-    .highlight_fill_color.b           = DEFAULT_HIGHLIGHT_FILL_COLOR_B,
-    .highlight_fill_color.a           = DEFAULT_HIGHLIGHT_FILL_COLOR_A,
-    .highlight_outline_color.r        = DEFAULT_HIGHLIGHT_OUTLINE_COLOR_R,
-    .highlight_outline_color.g        = DEFAULT_HIGHLIGHT_OUTLINE_COLOR_G,
-    .highlight_outline_color.b        = DEFAULT_HIGHLIGHT_OUTLINE_COLOR_B,
-    .highlight_outline_color.a        = DEFAULT_HIGHLIGHT_OUTLINE_COLOR_A,
-    .highlight_outline_size           = DEFAULT_HIGHLIGHT_OUTLINE_SIZE,
-    .highlight_rx                     = DEFAULT_HIGHLIGHT_CORNER_RADIUS,
-    .title_padding                    = -1,
-    .max_buttons                      = DEFAULT_MAX_BUTTONS,
-    .icon_spacing                     = -1,
-    .highlight_vpadding               = -1,
-    .highlight_hpadding               = -1,
-    .title_opacity[0]                 = '\0',
-    .highlight_fill_opacity[0]        = '\0',
-    .highlight_outline_opacity[0]     = '\0',
-    .vcenter[0]             = '\0',
-    .icon_spacing_str[0]              = '\0',
-    .scroll_indicators                = DEFAULT_SCROLL_INDICATORS,
-    .scroll_indicator_fill_color.r    = DEFAULT_SCROLL_INDICATOR_FILL_COLOR_R,
-    .scroll_indicator_fill_color.g    = DEFAULT_SCROLL_INDICATOR_FILL_COLOR_G,
-    .scroll_indicator_fill_color.b    = DEFAULT_SCROLL_INDICATOR_FILL_COLOR_B,
-    .scroll_indicator_fill_color.a    = DEFAULT_SCROLL_INDICATOR_FILL_COLOR_A,
-    .scroll_indicator_outline_size    = DEFAULT_SCROLL_INDICATOR_OUTLINE_SIZE,
-    .scroll_indicator_outline_color.r = DEFAULT_SCROLL_INDICATOR_OUTLINE_COLOR_R,
-    .scroll_indicator_outline_color.g = DEFAULT_SCROLL_INDICATOR_OUTLINE_COLOR_G,
-    .scroll_indicator_outline_color.b = DEFAULT_SCROLL_INDICATOR_OUTLINE_COLOR_B,
-    .scroll_indicator_outline_color.a = DEFAULT_SCROLL_INDICATOR_OUTLINE_COLOR_A,
-    .scroll_indicator_opacity[0]      = '\0',
-    .title_oversize_mode              = OVERSIZE_TRUNCATE,
-    .wrap_entries                     = DEFAULT_WRAP_ENTRIES,
-    .reset_on_back                    = DEFAULT_RESET_ON_BACK,
-    .mouse_select                     = DEFAULT_MOUSE_SELECT,
-    .inhibit_os_screensaver           = DEFAULT_INHIBIT_OS_SCREENSAVER,
-    .startup_cmd                      = NULL,
-    .quit_cmd                         = NULL,
-    .screensaver_enabled              = false,
-    .screensaver_idle_time            = DEFAULT_SCREENSAVER_IDLE_TIME*1000,
-    .screensaver_intensity_str[0]     = '\0',
-    .screensaver_pause_slideshow      = DEFAULT_SCREENSAVER_PAUSE_SLIDESHOW,
-    .gamepad_enabled                  = DEFAULT_GAMEPAD_ENABLED,
-    .gamepad_device                   = DEFAULT_GAMEPAD_DEVICE,
-    .gamepad_mappings_file            = NULL,
-    .on_launch                        = ON_LAUNCH_BLANK,
-    .debug                            = false,
-    .exe_path                         = NULL,
-    .first_menu                       = NULL,
-    .num_menus                        = 0,
-    .clock_enabled                    = DEFAULT_CLOCK_ENABLED,
-    .clock_show_date                  = DEFAULT_CLOCK_SHOW_DATE,
-    .clock_alignment                  = DEFAULT_CLOCK_ALIGNMENT,
-    .clock_font_path                  = NULL,
-    .clock_margin_str[0]              = '\0',
-    .clock_margin                     = -1,
-    .clock_font_color.r               = DEFAULT_CLOCK_FONT_COLOR_R,
-    .clock_font_color.g               = DEFAULT_CLOCK_FONT_COLOR_G,
-    .clock_font_color.b               = DEFAULT_CLOCK_FONT_COLOR_B,
-    .clock_font_color.a               = DEFAULT_CLOCK_FONT_COLOR_A,
-    .clock_shadows                    = DEFAULT_CLOCK_SHADOWS,
-    .clock_shadow_color.r             = DEFAULT_CLOCK_SHADOW_COLOR_R,
-    .clock_shadow_color.g             = DEFAULT_CLOCK_SHADOW_COLOR_G,
-    .clock_shadow_color.b             = DEFAULT_CLOCK_SHADOW_COLOR_B,
-    .clock_shadow_color.a             = DEFAULT_CLOCK_SHADOW_COLOR_A,
-    .clock_opacity[0]                 = '\0',
-    .clock_font_size                  = DEFAULT_CLOCK_FONT_SIZE,
-    .clock_time_format                = DEFAULT_CLOCK_TIME_FORMAT,
-    .clock_date_format                = DEFAULT_CLOCK_DATE_FORMAT,
-    .clock_include_weekday            = DEFAULT_CLOCK_INCLUDE_WEEKDAY,
-    .slideshow_image_duration         = DEFAULT_SLIDESHOW_IMAGE_DURATION,
-    .slideshow_transition_time        = DEFAULT_SLIDESHOW_TRANSITION_TIME
-};
+Config config;
 
 // Initialize default states
 State state = { false };
@@ -191,19 +91,12 @@ Uint32 repeat_period;
 
 // A function to initialize SDL
 static void init_sdl()
-{    
-    // Set flags, hints
-    Uint32 sdl_flags = SDL_INIT_VIDEO;
+{
 #ifdef PLATFORM_POSIX
     SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
 #endif
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
-    SDL_SetHint(SDL_HINT_VIDEO_ALLOW_SCREENSAVER, config.inhibit_os_screensaver ? "0" : "1");
-    if (config.gamepad_enabled)
-        sdl_flags |= SDL_INIT_GAMECONTROLLER;
-
-    // Initialize SDL
-    if (SDL_Init(sdl_flags) < 0)
+    if (SDL_Init(SDL_INIT_VIDEO) < 0)
         log_fatal("Could not initialize SDL\n%s", SDL_GetError());
 
     SDL_GetDesktopDisplayMode(0, &display_mode);
@@ -217,7 +110,7 @@ static void init_sdl()
     geo.screen_margin = (int) (SCREEN_MARGIN * (float) geo.screen_height);
 }
 
-// A function to create the window and renderer
+// A function to create the window (once per process)
 static void create_window()
 {
     window = SDL_CreateWindow(PROJECT_NAME,
@@ -230,8 +123,15 @@ static void create_window()
     if (window == NULL)
         log_fatal("Could not create SDL Window\n%s", SDL_GetError());
     SDL_ShowCursor(SDL_DISABLE);
+#ifdef _WIN32
+    SDL_VERSION(&wm_info.version);
+    SDL_GetWindowWMInfo(window, &wm_info);
+#endif
+}
 
-    // Create HW accelerated renderer, get screen resolution for geometry calculations
+// A function to create the renderer (on every config load; VSync is a renderer flag)
+static int create_renderer()
+{
     Uint32 renderer_flags = SDL_RENDERER_ACCELERATED;
     if (!config.vsync) {
         if (config.fps_limit > MIN_FPS_LIMIT && config.fps_limit <= display_mode.refresh_rate)
@@ -253,19 +153,17 @@ static void create_window()
         slideshow->transition_change_rate = 255.0f / ((float) config.slideshow_transition_time / (float) refresh_period);
 
     renderer = SDL_CreateRenderer(window, -1, renderer_flags);
+    if (renderer == NULL) {
+        log_error("Could not initialize renderer\n%s", SDL_GetError());
+        return 1;
+    }
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-    if (renderer == NULL)
-        log_fatal("Could not initialize renderer\n%s", SDL_GetError());
-
-    // Set background color
     set_draw_color();
-
 #ifdef _WIN32
-    SDL_VERSION(&wm_info.version);
-    SDL_GetWindowWMInfo(window, &wm_info);
     if (config.background_mode == BACKGROUND_TRANSPARENT)
         make_window_transparent();
 #endif
+    return 0;
 }
 
 // A function to initialize the SDL_image library
@@ -296,13 +194,10 @@ void set_draw_color()
         );
 }
 
-// A function to initialize SDL's TTF subsystem
-static void init_sdl_ttf()
+// A function to load the title font from the config
+static int load_title_font()
 {
-    if (TTF_Init() == -1)
-        log_fatal("Could not initialize SDL_ttf\n%s", TTF_GetError());
-    
-    title_info = (TextInfo) { 
+    title_info = (TextInfo) {
         .font_size = (int) config.title_font_size,
         .shadow = config.title_shadows,
         .font_path = &config.title_font_path,
@@ -317,98 +212,141 @@ static void init_sdl_ttf()
     else
         title_info.shadow_color = NULL;
 
-    int error = load_font(&title_info, FILENAME_DEFAULT_FONT);
-    if (error)
-        log_fatal("Could not load title font");
+    if (load_font(&title_info, FILENAME_DEFAULT_FONT)) {
+        log_error("Could not load title font");
+        return 1;
+    }
     geo.font_height = config.titles_enabled ? TTF_FontHeight(title_info.font) : 0;
+    return 0;
 }
 
-// A function to close subsystems and free memory before quitting
-static void cleanup()
+// A function to free the menu, hotkey, and gamepad control lists built by the parser
+static void free_config_lists()
 {
-    // Wait until all threads have completed
+    Menu *next_menu;
+    for (Menu *m = config.first_menu; m != NULL; m = next_menu) {
+        next_menu = m->next;
+        Entry *next_entry;
+        for (Entry *e = m->first_entry; e != NULL; e = next_entry) {
+            next_entry = e->next;
+            free(e->title);
+            free(e->icon_path);
+            free(e->icon_selected_path);
+            free(e->cmd);
+            free(e);
+        }
+        free(m->name);
+        free(m);
+    }
+    config.first_menu = NULL;
+    config.num_menus = 0;
+
+    Hotkey *next_hotkey;
+    for (Hotkey *h = hotkeys; h != NULL; h = next_hotkey) {
+        next_hotkey = h->next;
+        free(h->cmd);
+        free(h);
+    }
+    hotkeys = NULL;
+
+    GamepadControl *next_control;
+    for (GamepadControl *g = gamepad_controls; g != NULL; g = next_control) {
+        next_control = g->next;
+        free(g->cmd);
+        free(g);
+    }
+    gamepad_controls = NULL;
+}
+
+// A function to free everything launcher_load() created, keeping the window and SDL itself
+static void launcher_unload()
+{
+    // Worker threads render into clock/slideshow buffers, so stop them first
     SDL_WaitThread(Slideshowhread, NULL);
+    Slideshowhread = NULL;
     SDL_WaitThread(clock_thread, NULL);
-    
-    // Destroy renderer and window
+    clock_thread = NULL;
+
+#ifdef _WIN32
+    unregister_exit_hotkey();
+#endif
+    if (gamepads != NULL)
+        disconnect_gamepad(-1, true, true);
+
+    if (title_info.font != NULL) {
+        TTF_CloseFont(title_info.font);
+        title_info.font = NULL;
+    }
+    if (clk != NULL) {
+        if (clk->text_info.font != NULL)
+            TTF_CloseFont(clk->text_info.font);
+        SDL_FreeSurface(clk->time_surface);
+        SDL_FreeSurface(clk->date_surface);
+        free(clk);
+        clk = NULL;
+    }
+    if (slideshow != NULL) {
+        SDL_FreeSurface(slideshow->transition_surface);
+        quit_slideshow();
+        slideshow = NULL;
+    }
+
+    // Destroying the renderer frees every texture created with it
     if (renderer != NULL) {
         SDL_DestroyRenderer(renderer);
         renderer = NULL;
     }
-    if (window != NULL) {
-        SDL_DestroyWindow(window);
-        window = NULL;
-    }
+    background_texture = NULL;
+    background_overlay = NULL;
+    free(highlight);
+    highlight = NULL;
+    free(scroll);
+    scroll = NULL;
+    free(screensaver);
+    screensaver = NULL;
 
-    // Quit subsystems
-    SDL_Quit();
-    IMG_Quit();
-    TTF_Quit();
-    quit_svg();
-    if (config.background_mode == BACKGROUND_SLIDESHOW)
-        quit_slideshow();
+    free_config_lists();
+    default_menu = NULL;
+    current_menu = NULL;
+    current_entry = NULL;
 
-    // Close log file if open
-    if (log_file != NULL)
-        fclose(log_file);
-
-    // Free dynamically allocated memory
     free(config.default_menu);
     free(config.background_image);
     free(config.title_font_path);
-    free(config.exe_path);
     free(config.slideshow_directory);
     free(config.clock_font_path);
     free(config.gamepad_mappings_file);
     free(config.startup_cmd);
     free(config.quit_cmd);
-    free(highlight);
-    free(scroll);
-    free(screensaver);
-    free(clk);
+    config.default_menu = NULL;
+    config.background_image = NULL;
+    config.title_font_path = NULL;
+    config.slideshow_directory = NULL;
+    config.clock_font_path = NULL;
+    config.gamepad_mappings_file = NULL;
+    config.startup_cmd = NULL;
+    config.quit_cmd = NULL;
 
-    // Free menu and entry linked lists
-    Entry *entry = NULL;
-    Entry *tmp_entry = NULL;
-    Menu *menu = config.first_menu;
-    Menu *tmp_menu = NULL;
-    for (size_t i = 0; i < config.num_menus; i++) {
-        free(menu->name);
-        entry = menu->first_entry;
-        for(size_t j = 0; j < menu->num_entries; j++) {
-            free(entry->title);
-            free(entry->icon_path);
-            free(entry->icon_selected_path);
-            free(entry->cmd);
-            tmp_entry = entry;
-            entry = entry->next;
-            free(tmp_entry);
-        }
-        tmp_menu = menu;
-        menu = menu->next;
-        free(tmp_menu);
+    bool has_focus = state.has_focus;
+    state = (State) { .has_focus = has_focus };
+}
+
+// A function to close subsystems and free memory before quitting
+static void cleanup()
+{
+    launcher_unload();
+    if (window != NULL) {
+        SDL_DestroyWindow(window);
+        window = NULL;
     }
-
-    // Free hotkey linked list
-    Hotkey *tmp_hotkey = NULL;
-    for(Hotkey *i = hotkeys; i != NULL; i = i->next) {
-        free(tmp_hotkey);
-        free(i->cmd);
-        tmp_hotkey = i;
-    }
-    free(tmp_hotkey);
-
-    // Free gamepad control linked list
-    GamepadControl *tmp_gamepad = NULL;
-    for (GamepadControl *i = gamepad_controls; i != NULL; i = i->next) {
-        free(tmp_gamepad);
-        free(i->cmd);
-        tmp_gamepad = i;
-    }
-    free(tmp_gamepad);
-
-    if (config.gamepad_enabled)
-        disconnect_gamepad(-1, false, true);
+    quit_svg();
+    TTF_Quit();
+    IMG_Quit();
+    SDL_Quit();
+    free(config.exe_path);
+    free(config.config_path);
+    if (log_file != NULL)
+        fclose(log_file);
 }
 
 // A function to handle key presses from keyboard
@@ -495,6 +433,7 @@ static void init_slideshow()
         );
         config.background_mode = BACKGROUND_COLOR;
         quit_slideshow();
+        slideshow = NULL;
     } 
     else if (slideshow->num_images == 1) {
         log_error("Only one image found in slideshow directory %s"
@@ -505,6 +444,7 @@ static void init_slideshow()
         config.background_image = strdup(slideshow->images[0]);
         config.background_mode = BACKGROUND_IMAGE;
         quit_slideshow();
+        slideshow = NULL;
     }
 
     // Generate array of random numbers for image order, load first image
@@ -860,6 +800,8 @@ static void execute_command(const char *command)
             scmd_restart();
         else if (!strcmp(special_command, SCMD_SLEEP))
             scmd_sleep();
+        else if (!strcmp(special_command, SCMD_RELOAD))
+            launcher_request_reload();
     }
 
     // Launch external application
@@ -1191,10 +1133,8 @@ void quit(int status)
             "A critical error occurred. Check the log file for details.", 
             NULL
         );
-    if (config.quit_cmd != NULL) {
+    if (config.quit_cmd != NULL)
         execute_command(config.quit_cmd);
-        free(config.quit_cmd);
-    }
     cleanup();
     exit(status);
 }
@@ -1212,55 +1152,64 @@ void print_version(FILE *stream)
     fprintf(stream, "  SDL_ttf   %u.%u.%u" endline, ttf_version->major, ttf_version->minor, ttf_version->patch);
 }
 
-int main(int argc, char *argv[]) 
+// A function to load the config file and build everything that depends on it
+static int launcher_load()
 {
-    int error;
-    char *config_file_path = NULL;
-    config.exe_path = SDL_GetBasePath();
+    // Start from built-in defaults, keeping what came from the command line
+    char *exe_path = config.exe_path;
+    char *config_path = config.config_path;
+    bool debug = config.debug;
+    memcpy(&config, &default_config, sizeof(Config));
+    config.exe_path = exe_path;
+    config.config_path = config_path;
+    config.debug = debug;
 
-    // Handle command line arguments, find config file
-    handle_arguments(argc, argv, &config_file_path);
-
-    // Parse config file for settings and menu entries
-    parse_config_file(config_file_path);
-    free(config_file_path);
-
-    // Get default menu
-    if (config.default_menu == NULL)
-        log_fatal("No default menu defined in config file");
+    if (parse_config_file(config.config_path))
+        return 1;
+    if (config.default_menu == NULL) {
+        log_error("No default menu defined in config file");
+        return 1;
+    }
     default_menu = get_menu(config.default_menu);
-    if (default_menu == NULL)
-        log_fatal("Default menu %s not found in config file", config.default_menu);
+    if (default_menu == NULL) {
+        log_error("Default menu %s not found in config file", config.default_menu);
+        return 1;
+    }
 
-    // Initialize SDL, verify all settings are in their allowable range
-    init_sdl();
-    init_sdl_image();
-    init_sdl_ttf();
+    if (config.inhibit_os_screensaver)
+        SDL_DisableScreenSaver();
+    else
+        SDL_EnableScreenSaver();
+
+    if (load_title_font())
+        return 1;
     validate_settings(&geo);
-    
-    // Initialize slideshow
     if (config.background_mode == BACKGROUND_SLIDESHOW)
         init_slideshow();
-
-    // Initialize Nanosvg, create window and renderer
-    init_svg();
-    create_window();
-
-    // Initialize timing
+    if (create_renderer())
+        return 1;
     ticks.main = SDL_GetTicks();
     ticks.last_input = ticks.main;
-    ticks.program_start = ticks.main;
+    ticks.slideshow_load = ticks.main;
 
-    // Load gamepad overrides
-    if (config.gamepad_enabled && config.gamepad_mappings_file != NULL) {
-        error = SDL_GameControllerAddMappingsFromFile(config.gamepad_mappings_file);
-        if (error < 0) {
-            log_error("Could not load gamepad mappings from %s\n%s", 
-                config.gamepad_mappings_file,
-                SDL_GetError()
-            );
+    // Gamepad subsystem follows the setting. SDL only announces already-attached
+    // devices when the subsystem starts, so on reload connect them here.
+    if (config.gamepad_enabled) {
+        bool already_running = SDL_WasInit(SDL_INIT_GAMECONTROLLER) != 0;
+        if (!already_running && SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) < 0)
+            log_error("Could not initialize gamepad subsystem\n%s", SDL_GetError());
+        if (config.gamepad_mappings_file != NULL &&
+        SDL_GameControllerAddMappingsFromFile(config.gamepad_mappings_file) < 0)
+            log_error("Could not load gamepad mappings from %s\n%s", config.gamepad_mappings_file, SDL_GetError());
+        if (already_running) {
+            for (int i = 0; i < SDL_NumJoysticks(); i++) {
+                if (SDL_IsGameController(i) && (config.gamepad_device < 0 || config.gamepad_device == i))
+                    connect_gamepad(i, true, false);
+            }
         }
     }
+    else if (SDL_WasInit(SDL_INIT_GAMECONTROLLER))
+        SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER);
 
     // Render background
     if (config.background_mode == BACKGROUND_IMAGE) {
@@ -1289,7 +1238,7 @@ int main(int argc, char *argv[])
 
     // Initialize clock
     if (config.clock_enabled) {
-        clk = malloc(sizeof(Clock));
+        clk = calloc(1, sizeof(Clock));
         init_clock(clk);
         ticks.clock_update = ticks.main;
     }
@@ -1331,25 +1280,102 @@ int main(int argc, char *argv[])
         background_overlay = load_texture(overlay_surface);
     }
 
-    // Register exit hotkey with Windows
 #ifdef _WIN32
     if (has_exit_hotkey())
         register_exit_hotkey();
 #endif
 
-    // Print debug info to log
     if (config.debug) {
         debug_video(renderer, &display_mode);
         debug_settings();
         debug_gamepad(gamepad_controls);
-        debug_hotkeys(hotkeys);    
+        debug_hotkeys(hotkeys);
         debug_menu_entries(config.first_menu, config.num_menus);
     }
 
-    // Load the default menu and display it
-    error = load_menu(default_menu, false, true);
-    if (error)
-        log_fatal("Could not load default menu %s", config.default_menu);
+    if (load_menu(default_menu, false, true)) {
+        log_error("Could not load default menu %s", config.default_menu);
+        return 1;
+    }
+    return 0;
+}
+
+// A function to put config.ini.bak back in place, keeping the bad file as config.ini.failed
+static int restore_config_backup(const char *path)
+{
+    char backup_path[MAX_PATH_CHARS + 1];
+    char failed_path[MAX_PATH_CHARS + 1];
+    snprintf(backup_path, sizeof(backup_path), "%s.bak", path);
+    snprintf(failed_path, sizeof(failed_path), "%s.failed", path);
+    IniDoc *backup = ini_doc_load(backup_path);
+    if (backup == NULL)
+        return 1;
+    remove(failed_path);
+    if (replace_file(path, failed_path) != 0) {
+        log_error("Could not move %s to %s, not restoring the backup", path, failed_path);
+        ini_doc_free(backup);
+        return 1;
+    }
+    int error = ini_doc_save(backup, path);
+    ini_doc_free(backup);
+    return error;
+}
+
+// A function to ask for a reload; the main loop runs it at the top of its next iteration
+void launcher_request_reload()
+{
+    state.reload_pending = true;
+}
+
+// A function to re-read config.ini and rebuild the launcher without closing the window.
+// Only call it from the top of the main loop, never from code that is iterating menus,
+// entries, hotkeys, or gamepads: it frees and rebuilds all of them.
+static int launcher_reload()
+{
+    log_debug("Reloading configuration from %s", config.config_path);
+
+    // Check the new file before tearing down the running launcher
+    IniDoc *doc = ini_doc_load(config.config_path);
+    if (doc == NULL) {
+        log_error("Could not read %s, keeping the current configuration", config.config_path);
+        return 1;
+    }
+    char err[512];
+    bool valid = config_check(doc, err, sizeof(err));
+    ini_doc_free(doc);
+    if (!valid) {
+        log_error("Not reloading %s: %s", config.config_path, err);
+        return 1;
+    }
+
+    launcher_unload();
+    int error = launcher_load();
+    if (error) {
+        log_error("Reload failed, restoring the previous configuration");
+        launcher_unload();
+        if (restore_config_backup(config.config_path) || launcher_load())
+            log_fatal("Could not load %s or its backup %s.bak", config.config_path, config.config_path);
+    }
+    return error;
+}
+
+int main(int argc, char *argv[])
+{
+    memcpy(&config, &default_config, sizeof(Config));
+    config.exe_path = SDL_GetBasePath();
+    handle_arguments(argc, argv, &config.config_path);
+
+    // One-time setup: SDL, image/font libraries, SVG rasterizer, window
+    init_sdl();
+    init_sdl_image();
+    if (TTF_Init() == -1)
+        log_fatal("Could not initialize SDL_ttf\n%s", TTF_GetError());
+    init_svg();
+    create_window();
+    ticks.program_start = SDL_GetTicks();
+
+    if (launcher_load())
+        log_fatal("Could not load configuration from %s", config.config_path);
 
     // Execute startup command
     if (config.startup_cmd != NULL)
@@ -1359,6 +1385,14 @@ int main(int argc, char *argv[])
     log_debug("Begin program loop");
     while (1) {
         ticks.main = SDL_GetTicks();
+
+        // Apply a :reload requested during the previous frame
+        if (state.reload_pending) {
+            state.reload_pending = false;
+            launcher_reload();
+            SDL_FlushEvents(SDL_KEYDOWN, SDL_MOUSEWHEEL);
+            ticks.main = SDL_GetTicks();
+        }
         while (SDL_PollEvent(&event)) {
             switch(event.type) {
                 case SDL_QUIT:

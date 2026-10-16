@@ -23,8 +23,10 @@ extern GamepadControl  *gamepad_controls;
 extern Hotkey          *hotkeys;
 Menu                   *menu  = NULL;
 Entry                  *entry = NULL;
+static Hotkey          *current_hotkey = NULL;
+static GamepadControl  *current_gamepad_control = NULL;
 
-static const char *mode_settings[][5] = {
+const char *mode_settings[][5] = {
     {"Color", "Image", "Slideshow", "Transparent", NULL}, // Background Mode
     {"Blank", "None", "Quit", NULL, NULL},                // OnLaunch
     {"Truncated", "Shrink", "None", NULL, NULL},          // OversizeMode
@@ -111,17 +113,31 @@ void handle_arguments(int argc, char *argv[], char **config_file_path)
     log_debug("Config file found: %s", *config_file_path);
 }
 
-// A function to parse the config file and store the settings into the config struct
-void parse_config_file(const char *config_file_path)
+// A function to reset parser state so the config file can be parsed again
+void reset_config_parser(void)
 {
+    menu = NULL;
+    entry = NULL;
+    current_hotkey = NULL;
+    current_gamepad_control = NULL;
+}
+
+// A function to parse the config file and store the settings into the config struct
+int parse_config_file(const char *config_file_path)
+{
+    reset_config_parser();
     FILE *file = fopen(config_file_path, "r");
-    if (file == NULL)
-        log_fatal("Could not open config file");
+    if (file == NULL) {
+        log_error("Could not open config file %s", config_file_path);
+        return 1;
+    }
     int error = ini_parse_file(file, config_handler, NULL);
     fclose(file);
-    
-    if (error < 0)
-        log_fatal("Could not parse config file");
+    if (error < 0) {
+        log_error("Could not parse config file %s", config_file_path);
+        return 1;
+    }
+    return 0;
 }
 
 // A function to handle config file parsing
@@ -775,7 +791,6 @@ void add_hotkey(const char *keycode, const char *cmd)
     char *p = (char*) keycode + 1;
 
     // Convert hex string to binary
-    static Hotkey *current_hotkey = NULL;
     SDL_Keycode code = (SDL_Keycode) strtol(p, NULL, 16);
 
     // Check if exit hotkey for Windows
@@ -845,7 +860,6 @@ static void add_gamepad_control(const char *label, const char *cmd)
         return;
 
     // Begin the linked list if none exists
-    static GamepadControl *current_gamepad_control = NULL;
     if (current_gamepad_control == NULL) {
         gamepad_controls = malloc(sizeof(GamepadControl));
         current_gamepad_control = gamepad_controls;

@@ -10,6 +10,13 @@ set(SOURCES
   debug.h
   clock.c
   clock.h
+  ini_doc.c
+  ini_doc.h
+  config_io.c
+  config_io.h
+  settings_schema.c
+  settings_schema.h
+  config_defaults.c
 )
 if (UNIX)
   add_executable(${EXECUTABLE_TITLE} ${SOURCES})

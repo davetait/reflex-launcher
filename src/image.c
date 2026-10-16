@@ -411,7 +411,7 @@ int load_font(TextInfo *info, const char *default_font)
             free(default_font_path);
         }
         if (info->font == NULL) {
-            log_fatal("Could not load default font");
+            log_error("Could not load default font");
             return 1;
         }
     }

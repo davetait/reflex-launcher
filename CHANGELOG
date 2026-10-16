@@ -1,4 +1,6 @@
 Unreleased
+- Add :reload special command to apply config.ini changes without restarting
+- Fix leaks and stale parser state when the config is re-read
 - macOS: Build from source with Homebrew dependencies (fork)
 - Fix crash when LANG is unset or the display reports a 0 Hz refresh rate
 

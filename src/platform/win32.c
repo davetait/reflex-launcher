@@ -10,6 +10,7 @@
 #include "../launcher.h"
 #include <launcher_config.h>
 #include "platform.h"
+#include "fileops.h"
 #include "../util.h"
 #include "../debug.h"
 #include "slideshow.h"
@@ -314,6 +315,14 @@ void register_exit_hotkey()
     }
 }
 
+// A function to release the exit hotkey before the config is reloaded
+void unregister_exit_hotkey()
+{
+    if (exit_hotkey)
+        UnregisterHotKey(wm_info.info.win.window, 1);
+    exit_hotkey = 0;
+}
+
 // A function to check if the exit hotkey was pressed, and close the active window if so
 void check_exit_hotkey(SDL_SysWMmsg *msg)
 {
@@ -337,4 +346,11 @@ static UINT sdl_to_win32_keycode(SDL_Keycode keycode)
             return table[i].win;
     }
     return 0;
+}
+
+// A function to atomically replace a file
+// (ANSI API on purpose: paths come from fopen()-compatible strings elsewhere in the app)
+int replace_file(const char *from, const char *to)
+{
+    return MoveFileExA(from, to, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) ? 0 : -1;
 }

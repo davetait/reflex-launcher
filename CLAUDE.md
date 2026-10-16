@@ -18,7 +18,13 @@ cmake --build build
 
 Packaging (matches CI): `-DCMAKE_INSTALL_PREFIX=/usr -DPACKAGE=DEB` then `cmake --build build --target package`. `-DPACKAGE=ARCH` only generates a PKGBUILD and stops.
 
-There are no unit tests. CI (`.github/workflows/build.yml`) does not run on pushes or PRs. It runs only on `v*` tags (building Windows, Debian bullseye, macOS, and RPi packages and uploading all but macOS to the GitHub Release) or manually via `gh workflow run Build --ref <branch>`, which builds without releasing. To verify a change, build with `EXTRA_WARNINGS=ON` and run with `-d`, using the generated `build/config.ini`.
+Unit tests (config file editing, settings schema, save checks):
+```bash
+cmake -B build-tests -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
+cmake --build build-tests --target reflex-tests && ctest --test-dir build-tests --output-on-failure
+```
+
+Unit tests cover `ini_doc`, `settings_schema`, and `config_io`, while UI and reload behavior are verified manually. CI (`.github/workflows/build.yml`) does not run on pushes or PRs. It runs only on `v*` tags (building Windows, Debian bullseye, macOS, and RPi packages and uploading all but macOS to the GitHub Release) or manually via `gh workflow run Build --ref <branch>`, which builds without releasing. To verify a change, build with `EXTRA_WARNINGS=ON` and run with `-d`, using the generated `build/config.ini`.
 
 ## Architecture
 - `src/launcher.c`: `main()`, SDL init, window creation, the main loop (`SDL_PollEvent` → state updates → `draw_screen()`), input handling, menu navigation, gamepad hot-plug, and `execute_command()` for special commands (`:submenu`, `:back`, `:shutdown`, …; see `SCMD_*` in `launcher.h`). Process-wide state lives in globals defined here (`config`, `state`, `ticks`, `geo`, `renderer`, …). Other files access them with `extern`.
@@ -28,6 +34,12 @@ There are no unit tests. CI (`.github/workflows/build.yml`) does not run on push
 - `src/clock.c`: clock/date rendering.
 - `src/debug.c`: logging (`log_debug`/`log_error`/`log_fatal`) and `-d` diagnostics dumps.
 - `src/platform/`: OS layer behind `platform.h` (process launch, shutdown/sleep, file checks, slideshow dir scan). `unix.c` or `win32.c` is compiled into a static `platform` lib. Shared files guard Windows-only code with `#ifdef _WIN32` and Linux/macOS code with `#ifdef PLATFORM_POSIX` (defined by CMake when `UNIX`). Never use `__unix__`: Apple clang doesn't define it. Mac-only differences (e.g. `osascript`/`pmset` power commands in `unix.h`) use `#ifdef __APPLE__`.
+- `src/config_defaults.c`: `default_config`, the built-in defaults copied into `config` at startup and before every reload.
+- `src/ini_doc.*`: line-preserving INI document for editing `config.ini`. Mirrors inih's parsing rules (comments, inline ` ;`, continuations, BOM, duplicate sections) so `ini_doc_get` returns what the launcher loads; edits keep comments and refuse values, keys, or section names inih would read back differently. `ini_doc_save` writes `.tmp`, copies the old file to `.bak`, then replaces it.
+- `src/settings_schema.*`: table of every scalar setting (section, key, type, range, label, help) and `schema_validate()`. The `schema` test fails if a `SETTING_*` key is missing.
+- `src/config_io.*`: `config_check()` (default menu, entries, submenus, hotkeys) and `config_save()` (validate changed values and line length, detect changes on disk, save).
+- `src/platform/fileops.h`: `replace_file()`, an atomic rename-over implemented in `unix.c`/`win32.c`.
+- Reload: `launcher_load()`/`launcher_unload()` in `launcher.c` build and free everything config-dependent (keeping the window and SDL). `launcher_reload()` is static and runs only at the top of the main loop; anything else (e.g. the `:reload` command) calls `launcher_request_reload()`, because a reload frees the menus, entries, and hotkeys the caller may be iterating.
 - `src/external/`: vendored nanosvg. Do not edit; update from upstream instead.
 
 Threads: the slideshow and clock render surfaces on `SDL_CreateThread` workers and signal through `State` flags (`slideshow_background_ready`, `clock_ready`). Only the main thread may touch the `SDL_Renderer`/textures.
@@ -40,10 +52,11 @@ Frame pacing: with `VSync=false`, `draw_screen()` sleeps for `refresh_period - e
 Config keys are not hard-coded in C. To add or rename a setting:
 1. `config/config_settings.cmake`: `set(SETTING_FOO "Foo")`
 2. `config/launcher_config.h.in`: `#define SETTING_FOO "@SETTING_FOO@"` (CMake generates `build/launcher_config.h`)
-3. `src/launcher.h`: add a field to `Config`. `src/launcher.c`: set its default in the `Config config = {…}` initializer.
+3. `src/launcher.h`: add a field to `Config`. `src/config_defaults.c`: set its default in the `const Config default_config = {…}` initializer.
 4. `src/util.c`: parse it in `config_handler` under the right `[Section]`, and clamp it in `validate_settings()` if needed.
-5. `config/config.ini.in`: the template for both `build/config.ini` and the installed config. Default app commands and icons differ per platform/RPi (top-level `CMakeLists.txt`).
-6. Document it in `docs/configuration.md` (Jekyll site under `docs/`) and note it in `CHANGELOG`.
+5. `src/settings_schema.c`: add the setting to `settings_schema[]` (the `schema` test fails if you forget).
+6. `config/config.ini.in`: the template for both `build/config.ini` and the installed config. Default app commands and icons differ per platform/RPi (top-level `CMakeLists.txt`).
+7. Document it in `docs/configuration.md` (Jekyll site under `docs/`) and note it in `CHANGELOG`.
 
 ## Conventions
 - 4-space indent, `snake_case` functions, `PascalCase` typedefs, `static` for file-local functions with prototypes at the top of the file.

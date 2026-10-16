@@ -52,6 +52,7 @@
 #define SCMD_SHUTDOWN ":shutdown"
 #define SCMD_RESTART ":restart"
 #define SCMD_SLEEP ":sleep"
+#define SCMD_RELOAD ":reload"
 
 typedef enum {
     MODE_SETTING_BACKGROUND,
@@ -122,6 +123,7 @@ typedef struct {
     bool screensaver_transition;
     bool clock_rendering;
     bool clock_ready;
+    bool reload_pending;
 } State;
 
 // Timing information
@@ -293,6 +295,7 @@ typedef struct {
     char *gamepad_mappings_file;
     bool debug;
     char *exe_path;
+    char *config_path;
     Menu *first_menu;
     size_t num_menus;
     bool clock_enabled;
@@ -313,7 +316,13 @@ typedef struct {
     Uint32 slideshow_transition_time;
 } Config;
 
+extern const Config default_config;
+
 void quit_slideshow(void);
 void set_draw_color(void);
 void quit(int status);
+// Re-read config.ini and rebuild the launcher. The reload is deferred to the top of the
+// next main loop iteration, because it frees the menus, entries, and hotkeys the caller
+// may be using. Safe to call from anywhere on the main thread.
+void launcher_request_reload(void);
 void print_version(FILE *stream);
