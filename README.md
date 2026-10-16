@@ -4,8 +4,11 @@
   </a>
 
 
-# Flex Launcher
+# Reflex Launcher
 </div>
+
+> **Reflex Launcher is a fork of [Flex Launcher](https://github.com/complexlogic/flex-launcher) by complexlogic.** It adds macOS support. The executable, package, and config paths still use the original `flex-launcher` name, and the prebuilt Windows and Linux packages linked below are upstream Flex Launcher releases.
+
 <details open>
   <summary>Table of Contents</summary>
   <ol>
@@ -20,6 +23,7 @@
       <ul>
         <li><a href="#windows">Windows</a></li>
         <li><a href="#linux">Linux</a></li>
+        <li><a href="#macos">macOS</a></li>
       </ul>
     </li>
     <li><a href="#usage">Usage</a></li>
@@ -34,9 +38,9 @@
 </details>
 
 ## About
-Flex Launcher is a customizable application launcher and front end designed with a TV-friendly [10 foot user interface](https://en.wikipedia.org/wiki/10-foot_user_interface), intending to mimic the look and feel of a streaming box or game console. Flex Launcher allows you to launch applications on your HTPC or couch gaming PC entirely by use of a TV remote or a gamepad. No keyboard or mouse required!
+Reflex Launcher is a customizable application launcher and front end designed with a TV-friendly [10 foot user interface](https://en.wikipedia.org/wiki/10-foot_user_interface), intending to mimic the look and feel of a streaming box or game console. Reflex Launcher allows you to launch applications on your HTPC or couch gaming PC entirely by use of a TV remote or a gamepad. No keyboard or mouse required!
 
-Flex Launcher is compatible with both Windows and Linux (including Raspberry Pi devices). This fork can also be compiled from source on macOS; see the [compilation guide](docs/compilation.md#macos).
+Reflex Launcher is compatible with Windows, Linux (including Raspberry Pi devices), and macOS.
 
 ## Screenshots
 ![Screenshot 1](docs/assets/screenshots/screenshot1.png "Screenshot 1")
@@ -44,10 +48,10 @@ Flex Launcher is compatible with both Windows and Linux (including Raspberry Pi 
 https://user-images.githubusercontent.com/95071366/208355237-11f00cbb-9cc3-436b-98f7-8de350e584a7.mp4
 
 ## Installation
-Executables are available for Windows 64 bit, Linux x86-64, and Raspberry Pi. You can also compile the program yourself using the [compilation guide](docs/compilation.md).
+Upstream Flex Launcher executables are available for Windows 64 bit, Linux x86-64, and Raspberry Pi. They do not include this fork's changes. macOS is build-from-source only. You can also compile the program yourself using the [compilation guide](docs/compilation.md).
 
 ### Windows
-Download the win64 .zip file from the [latest release](https://github.com/complexlogic/flex-launcher/releases/latest) and extract the contents to a directory of your choice. Flex Launcher should be run on an up-to-date Windows 10 system, or Windows 11.
+Download the win64 .zip file from the [latest release](https://github.com/complexlogic/flex-launcher/releases/latest) and extract the contents to a directory of your choice. The launcher should be run on an up-to-date Windows 10 system, or Windows 11.
 
 ### Linux
 Binary packages are available on the [release page](https://github.com/complexlogic/flex-launcher/releases) for APT and pacman based distributions. You may use the commands below to install.
@@ -70,43 +74,67 @@ wget https://github.com/complexlogic/flex-launcher/releases/download/v2.2/flex-l
 sudo apt install ./flex-launcher_2.2_arm64.deb
 ```
 #### Copying Assets to Home Directory
-The Linux packages install a default config file and assets to `/usr/share/flex-launcher`. It is strongly recommended to *not* edit this config file directly, as it will be overwritten if you upgrade to a later version of Flex Launcher. Instead, copy these files to your home directory and edit it there.
+The Linux packages install a default config file and assets to `/usr/share/flex-launcher`. It is strongly recommended to *not* edit this config file directly, as it will be overwritten if you upgrade to a later version. Instead, copy these files to your home directory and edit it there.
 ```bash
 cp -r /usr/share/flex-launcher ~/.config
 sed -i "s|/usr/share/flex-launcher|$HOME/.config/flex-launcher|g" ~/.config/flex-launcher/config.ini
 ```
 
+### macOS
+No prebuilt macOS package is available, so Reflex Launcher must be compiled from source. Install [Homebrew](https://brew.sh) and the Xcode Command Line Tools (`xcode-select --install`), then install the dependencies:
+```bash
+brew install cmake pkgconf sdl2 sdl2_image sdl2_ttf inih
+```
+Clone the repo and build:
+```bash
+git clone https://github.com/davetait/reflex-launcher.git
+cd reflex-launcher
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+./build/flex-launcher
+```
+Optionally, install the program, default config file, and assets under `/usr/local`, then copy them to your home directory for editing (same reasoning as on Linux):
+```bash
+sudo cmake --install build
+cp -r /usr/local/share/flex-launcher ~/.config
+sed -i '' "s|/usr/local/share/flex-launcher|$HOME/.config/flex-launcher|g" ~/.config/flex-launcher/config.ini
+```
+#### macOS Notes
+- Linux `.desktop` files are not supported. Launch applications with `open`, e.g. `Entry1=Kodi;/path/to/kodi.png;open -a Kodi`.
+- The `:shutdown` and `:restart` commands use AppleScript. The first time you use one, macOS asks for permission to control "System Events". `:sleep` uses `pmset sleepnow`.
+- See the [compilation guide](docs/compilation.md#macos) for more detail.
+
 ## Usage
-Flex Launcher uses an INI file to configure the menus and settings. Upon  startup, the program will search for a file named `config.ini` in the following locations in order:
+Reflex Launcher uses an INI file to configure the menus and settings. Upon  startup, the program will search for a file named `config.ini` in the following locations in order:
 1. The current working directory
 2. The directory containing the `flex-launcher` executable
-3. Linux only: `~/.config/flex-launcher`
-4. Linux only: `/usr/share/flex-launcher`
+3. Linux and macOS only: `~/.config/flex-launcher`
+4. Linux and macOS only: `<install prefix>/share/flex-launcher` (`/usr/share/flex-launcher` for the Linux packages)
 
-If your config file is in one of the above locations, Flex Launcher can be started simply by double clicking the executable file or adding it to autostart. If your config file is in a non-standard location, you must specify the path via command line argument:
+If your config file is in one of the above locations, the launcher can be started simply by double clicking the executable file or adding it to autostart. If your config file is in a non-standard location, you must specify the path via command line argument:
 ```bash
 flex-launcher -c /path/to/config.ini
 ```
-Flex Launcher ships with a default config file which is intended strictly for demonstration purposes. If you try to start one of the applications, it is possible that nothing will happen because the install path is different on your system, or you don't have the application installed at all. See the [configuration file documentation](docs/configuration.md#configuring-flex-launcher) for instuctions on how to change the menus and settings.
+Reflex Launcher ships with a default config file which is intended strictly for demonstration purposes. If you try to start one of the applications, it is possible that nothing will happen because the install path is different on your system, or you don't have the application installed at all. See the [configuration file documentation](docs/configuration.md#configuring-flex-launcher) for instuctions on how to change the menus and settings.
 
 ### Controls
 The keyboard arrow keys move the highlight cursor left and right. Enter selects the current entry, backspace goes back to the previous menu (if applicable), and Esc quits the program. 
 
 #### TV Remotes
-Flex Launcher does not feature built-in decoding of IR or CEC signals. If you plan to use a TV remote to control the device, it is assumed that these signals are decoded by the OS or another program and mapped to keyboard presses, which can then be received by Flex Launcher.
+Reflex Launcher does not feature built-in decoding of IR or CEC signals. If you plan to use a TV remote to control the device, it is assumed that these signals are decoded by the OS or another program and mapped to keyboard presses, which can then be received by Reflex Launcher.
 
 #### Gamepads
 Gamepad controls are built-in to the program, but are disabled by default. To enable them, open your configuration file and, under the "Gamepad" section, change the "Enabled" setting from false to true. After that, the gamepad controls should "Just Work" for most users. If your gamepad is not recognized automatically, or you want to change the default controls, see the [gamepad controls documentation](docs/configuration.md#gamepad-controls).
 
 ### Debugging
-Flex Launcher has a debug mode which may be enabled as follows:
+Reflex Launcher has a debug mode which may be enabled as follows:
 ```bash
 flex-launcher -d
 ```
-This will output a logfile named `flex-launcher.log` in the same directory as `flex-launcher.exe` on Windows, and in `~/.local/share/flex-launcher` on Linux. 
+This will output a logfile named `flex-launcher.log` in the same directory as `flex-launcher.exe` on Windows, and in `~/.local/share/flex-launcher` on Linux and macOS. 
 
 ## Development Status
-Flex Launcher has reached a mature state, and there are currently no feature releases planned for the future. I've started a [new HTPC launcher project](https://github.com/complexlogic/big-launcher) which is similar in nature to Flex Launcher, but aims to provide a more advanced, Smart TV-like user interface. My future development effort will be focused on that new project, but I will still maintain Flex Launcher for bugfixes and dependency updates.
+Upstream Flex Launcher has reached a mature state and is maintained for bugfixes and dependency updates only; its author is focusing on a [new HTPC launcher project](https://github.com/complexlogic/big-launcher). Reflex Launcher builds on upstream and adds macOS support.
 
 ## Documentation
 Here is a list of available documentation:
@@ -117,7 +145,7 @@ Here is a list of available documentation:
 - [Compilation Guide](docs/compilation.md#compilation-guide)
 
 ## Credits
-Flex Launcher is made possible by the following projects:
+Reflex Launcher is a fork of [Flex Launcher](https://github.com/complexlogic/flex-launcher) by complexlogic, and is made possible by the following projects:
 - [SDL](https://github.com/libsdl-org/SDL), including the subprojects:
   - [SDL_image](https://github.com/libsdl-org/SDL_image)
   - [SDL_ttf](https://github.com/libsdl-org/SDL_ttf)
@@ -125,4 +153,4 @@ Flex Launcher is made possible by the following projects:
 - [inih](https://github.com/benhoyt/inih)
 - [Numix icons](https://github.com/numixproject)
 
-The design of Flex Launcher was strongly influenced by the excellent desktop application launcher [xlunch](https://github.com/Tomas-M/xlunch).
+The design of Flex Launcher, and therefore Reflex Launcher, was strongly influenced by the excellent desktop application launcher [xlunch](https://github.com/Tomas-M/xlunch).

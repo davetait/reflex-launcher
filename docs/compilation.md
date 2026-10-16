@@ -100,8 +100,8 @@ brew install cmake pkgconf sdl2 sdl2_image sdl2_ttf inih
 
 ### Building
 ```bash
-git clone https://github.com/complexlogic/flex-launcher.git
-cd flex-launcher
+git clone https://github.com/davetait/reflex-launcher.git
+cd reflex-launcher
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ./build/flex-launcher
