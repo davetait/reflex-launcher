@@ -197,6 +197,90 @@ static void test_unset_multiline(void)
     ini_doc_free(doc);
 }
 
+static void check_list(IniDoc *doc, const char *section, const char *const *expected, size_t n)
+{
+    const char **values = NULL;
+    size_t count = ini_doc_get_list(doc, section, &values);
+    CHECK(count == n);
+    for (size_t i = 0; i < n && i < count; i++)
+        CHECK_STR(values[i], expected[i]);
+    free(values);
+}
+
+static void test_get_list_mirrors_config_handler(void)
+{
+    // any key name counts, duplicate sections merge, continuation lines are extra items
+    IniDoc *doc = ini_doc_parse(
+        "[Main]\nEntry1=A;a.png;cmd-a\nKodi=B;b.png;cmd-b\n#Entry9=off;x;y\n"
+        "[Other]\nEntry1=X;x;x\n"
+        "[Main]\nEntry3=C;c.png;cmd-c\n  D;d.png;cmd-d\n");
+    const char *expected[] = {"A;a.png;cmd-a", "B;b.png;cmd-b", "C;c.png;cmd-c", "D;d.png;cmd-d"};
+    check_list(doc, "Main", expected, 4);
+    ini_doc_free(doc);
+}
+
+static void check_set_list(const char *before, const char *const *values, size_t n, const char *after)
+{
+    IniDoc *doc = ini_doc_parse(before);
+    CHECK(ini_doc_set_list(doc, "Main", "Entry", values, n));
+    char *out = ini_doc_serialize(doc);
+    CHECK_STR(out, after);
+    free(out);
+    check_list(doc, "Main", values, n);
+    ini_doc_free(doc);
+}
+
+static void test_set_list(void)
+{
+    const char *base = "[Main]\nEntry1=A;a;a\n# keep me\nEntry2=B;b;b\n\n[System]\nEntry1=S;s;s\n";
+    const char *reordered[] = {"B;b;b", "A;a;a"};
+    check_set_list(base, reordered, 2,
+        "[Main]\nEntry1=B;b;b\n# keep me\nEntry2=A;a;a\n\n[System]\nEntry1=S;s;s\n");
+    const char *grown[] = {"A;a;a", "B;b;b", "C;c;c"};
+    check_set_list(base, grown, 3,
+        "[Main]\nEntry1=A;a;a\n# keep me\nEntry2=B;b;b\nEntry3=C;c;c\n\n[System]\nEntry1=S;s;s\n");
+    const char *shrunk[] = {"A;a;a"};
+    check_set_list(base, shrunk, 1,
+        "[Main]\nEntry1=A;a;a\n# keep me\n\n[System]\nEntry1=S;s;s\n");
+    const char *fresh[] = {"N;n;n"};
+    check_set_list("[General]\nDefaultMenu=Main\n", fresh, 1,
+        "[General]\nDefaultMenu=Main\n\n[Main]\nEntry1=N;n;n\n");
+
+    IniDoc *doc = ini_doc_parse(base);
+    const char *bad[] = {"A;a;a", "B;b;cmd ; oops"};
+    CHECK(!ini_doc_set_list(doc, "Main", "Entry", bad, 2));
+    char *out = ini_doc_serialize(doc);
+    CHECK_STR(out, base);   // unchanged on failure
+    free(out);
+    ini_doc_free(doc);
+}
+
+static void test_sections(void)
+{
+    IniDoc *doc = ini_doc_parse("top=1\n[General]\nX=1\n[Main]\nEntry1=a;b;c\n[System]\nEntry1=s;s;s\n[Main]\nEntry2=d;e;f\n");
+    const char **names = NULL;
+    size_t n = ini_doc_sections(doc, &names);
+    CHECK(n == 3);
+    if (n == 3) {
+        CHECK_STR(names[0], "General");
+        CHECK_STR(names[1], "Main");
+        CHECK_STR(names[2], "System");
+    }
+    free(names);
+
+    ini_doc_rename_section(doc, "Main", "Home");
+    CHECK(!ini_doc_has_section(doc, "Main"));
+    const char *home[] = {"a;b;c", "d;e;f"};
+    check_list(doc, "Home", home, 2);
+
+    ini_doc_remove_section(doc, "System");
+    CHECK(!ini_doc_has_section(doc, "System"));
+    char *out = ini_doc_serialize(doc);
+    CHECK_STR(out, "top=1\n[General]\nX=1\n[Home]\nEntry1=a;b;c\n[Home]\nEntry2=d;e;f\n");
+    free(out);
+    ini_doc_free(doc);
+}
+
 void suite_ini_doc(void)
 {
     test_round_trip();
@@ -207,4 +291,7 @@ void suite_ini_doc(void)
     test_unset_and_dirty();
     test_set_with_aliasing();
     test_unset_multiline();
+    test_get_list_mirrors_config_handler();
+    test_set_list();
+    test_sections();
 }

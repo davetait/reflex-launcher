@@ -50,6 +50,7 @@ static void delete_line(IniDoc *doc, size_t index);
 static void make_key_line(IniLine *line, const char *key, const char *value);
 static size_t section_insert_point(IniDoc *doc, const char *section);
 static void mark_dirty(IniDoc *doc, const char *section, const char *key);
+static bool is_list_line(const IniLine *line, const char *section);
 
 static char *dup_range(const char *start, size_t length)
 {
@@ -427,4 +428,103 @@ void ini_doc_free(IniDoc *doc)
     free(doc->dirty_sections);
     free(doc->dirty_keys);
     free(doc);
+}
+
+static bool is_list_line(const IniLine *line, const char *section)
+{
+    return (line->kind == LINE_KEY || line->kind == LINE_CONTINUATION) && strcmp(line->section, section) == 0;
+}
+
+size_t ini_doc_get_list(const IniDoc *doc, const char *section, const char ***values)
+{
+    size_t count = 0;
+    *values = malloc((doc->count + 1) * sizeof(char*));
+    for (size_t i = 0; i < doc->count; i++) {
+        if (is_list_line(&doc->lines[i], section))
+            (*values)[count++] = doc->lines[i].value;
+    }
+    return count;
+}
+
+bool ini_doc_set_list(IniDoc *doc, const char *section, const char *prefix,
+                      const char *const *values, size_t count)
+{
+    for (size_t i = 0; i < count; i++) {
+        if (!ini_doc_value_is_representable(values[i]))
+            return false;
+    }
+
+    size_t *existing = malloc((doc->count + 1) * sizeof(size_t));
+    size_t existing_count = 0;
+    for (size_t i = 0; i < doc->count; i++) {
+        if (is_list_line(&doc->lines[i], section))
+            existing[existing_count++] = i;
+    }
+
+    char key[64];
+    size_t reused = count < existing_count ? count : existing_count;
+    for (size_t i = 0; i < reused; i++) {
+        snprintf(key, sizeof(key), "%s%zu", prefix, i + 1);
+        make_key_line(&doc->lines[existing[i]], key, values[i]);
+    }
+
+    // Delete surplus lines from the back so earlier indices stay valid
+    for (size_t j = existing_count; j-- > count;)
+        delete_line(doc, existing[j]);
+
+    // Insert new lines after the last reused one, or at the section's insert point
+    size_t at = reused > 0 ? existing[reused - 1] + 1 : section_insert_point(doc, section);
+    for (size_t i = reused; i < count; i++) {
+        snprintf(key, sizeof(key), "%s%zu", prefix, i + 1);
+        IniLine line = { .kind = LINE_KEY, .text = strdup(""), .section = strdup(section) };
+        insert_line(doc, at, line);
+        make_key_line(&doc->lines[at], key, values[i]);
+        at++;
+    }
+    free(existing);
+    mark_dirty(doc, section, prefix);
+    return true;
+}
+
+size_t ini_doc_sections(const IniDoc *doc, const char ***names)
+{
+    size_t count = 0;
+    *names = malloc((doc->count + 1) * sizeof(char*));
+    for (size_t i = 0; i < doc->count; i++) {
+        if (doc->lines[i].kind != LINE_SECTION)
+            continue;
+        bool seen = false;
+        for (size_t j = 0; j < count; j++)
+            seen = seen || strcmp((*names)[j], doc->lines[i].section) == 0;
+        if (!seen)
+            (*names)[count++] = doc->lines[i].section;
+    }
+    return count;
+}
+
+void ini_doc_remove_section(IniDoc *doc, const char *section)
+{
+    for (size_t i = doc->count; i-- > 0;) {
+        if (strcmp(doc->lines[i].section, section) == 0)
+            delete_line(doc, i);
+    }
+}
+
+void ini_doc_rename_section(IniDoc *doc, const char *from, const char *to)
+{
+    char *from_copy = strdup(from);  // `from` may point into the doc
+    for (size_t i = 0; i < doc->count; i++) {
+        IniLine *line = &doc->lines[i];
+        if (strcmp(line->section, from_copy) != 0)
+            continue;
+        free(line->section);
+        line->section = strdup(to);
+        if (line->kind == LINE_SECTION) {
+            size_t n = strlen(to) + 3;
+            free(line->text);
+            line->text = malloc(n);
+            snprintf(line->text, n, "[%s]", to);
+        }
+    }
+    free(from_copy);
 }
